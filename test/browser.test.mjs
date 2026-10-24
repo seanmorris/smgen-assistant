@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 import test from "node:test";
-import { modelNeedsShaderF16 } from "../src/browser/engine-client.mjs";
+import { adapterCompatibilityIssue, modelNeedsShaderF16 } from "../src/browser/engine-client.mjs";
 import { safeLink } from "../src/browser/render.mjs";
 
 class FakeElement {
@@ -77,9 +77,36 @@ test("model feature detection distinguishes f16 and f32 shader builds", () => {
   assert.equal(modelNeedsShaderF16("Qwen2.5-0.5B-Instruct-q4f32_1-MLC"), false);
 });
 
+test("adapter checks reject unsupported WebLLM limits before model loading", () => {
+  const limits = {
+    maxBufferSize: 256 * 1024 * 1024,
+    maxStorageBufferBindingSize: 128 * 1024 * 1024,
+    maxComputeWorkgroupStorageSize: 32 * 1024,
+    maxStorageBuffersPerShaderStage: 10
+  };
+  const adapter = /** @type {GPUAdapter} */ (/** @type {unknown} */ ({
+    features: new Set(),
+    limits
+  }));
+  assert.equal(adapterCompatibilityIssue(adapter, "model-q4f32_1"), null);
+  assert.match(adapterCompatibilityIssue(adapter, "model-q4f16_1") ?? "", /shader-f16/u);
+  const constrained = /** @type {GPUAdapter} */ (/** @type {unknown} */ ({
+    features: new Set(),
+    limits: { ...limits, maxBufferSize: 128 * 1024 * 1024 }
+  }));
+  assert.match(adapterCompatibilityIssue(constrained, "model-q4f32_1") ?? "", /maximum buffer size/u);
+});
+
 test("service worker uses the assistant directory as its scope", async () => {
   const source = await readFile(new URL("../src/browser/engine-client.mjs", import.meta.url), "utf8");
   assert.match(source, /new URL\("service-worker\.js", options\.assetBase\)\.href/u);
   assert.match(source, /scope: "\.\/"/u);
   assert.match(source, /controller\?\.scriptURL !== scriptUrl/u);
+  assert.match(source, /if \(serviceWorkerReady\) return CreateServiceWorkerMLCEngine/u);
+});
+
+test("service worker takes control without waiting for a page reload", async () => {
+  const source = await readFile(new URL("../src/browser/service-worker.mjs", import.meta.url), "utf8");
+  assert.match(source, /workerScope\.skipWaiting\(\)/u);
+  assert.match(source, /workerScope\.clients\.claim\(\)/u);
 });

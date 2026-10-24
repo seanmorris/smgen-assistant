@@ -44,17 +44,42 @@ export function modelNeedsShaderF16(modelId) {
 }
 
 /**
+ * Find a WebLLM runtime requirement that the adapter cannot meet.
+ *
+ * @param {GPUAdapter} adapter
+ * @param {string} modelId
+ * @returns {string | null}
+ */
+export function adapterCompatibilityIssue(adapter, modelId) {
+  const mebibyte = 1024 * 1024;
+  const checks = [
+    ["maximum buffer size", adapter.limits.maxBufferSize, 256 * mebibyte],
+    ["maximum storage buffer binding size", adapter.limits.maxStorageBufferBindingSize, 128 * mebibyte],
+    ["compute workgroup storage", adapter.limits.maxComputeWorkgroupStorageSize, 32 * 1024],
+    ["storage buffers per shader stage", adapter.limits.maxStorageBuffersPerShaderStage, 10]
+  ];
+  for (const [label, available, required] of checks) {
+    if (/** @type {number} */ (available) < /** @type {number} */ (required)) {
+      return `This WebGPU adapter provides insufficient ${label} for WebLLM.`;
+    }
+  }
+  if (modelNeedsShaderF16(modelId) && !adapter.features.has("shader-f16")) {
+    return "This model requires WebGPU shader-f16 support. Select a q4f32 model for this device.";
+  }
+  return null;
+}
+
+/**
  * Check the selected adapter before WebLLM compiles the model shaders.
  *
  * @param {string} modelId
  */
 async function checkModelSupport(modelId) {
   if (!("gpu" in navigator)) throw new Error("This browser does not provide WebGPU.");
-  const adapter = await navigator.gpu.requestAdapter();
+  const adapter = await navigator.gpu.requestAdapter({ powerPreference: "high-performance" });
   if (!adapter) throw new Error("This browser could not find a WebGPU adapter.");
-  if (modelNeedsShaderF16(modelId) && !adapter.features.has("shader-f16")) {
-    throw new Error("This model requires WebGPU shader-f16 support. Select a q4f32 model for this device.");
-  }
+  const issue = adapterCompatibilityIssue(adapter, modelId);
+  if (issue) throw new Error(issue);
 }
 
 /**
@@ -66,6 +91,7 @@ async function checkModelSupport(modelId) {
 export async function createAssistantEngine(options) {
   await checkModelSupport(options.modelId);
   const engineConfig = { initProgressCallback: options.onProgress };
+  let serviceWorkerReady = false;
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
     try {
       const scriptUrl = new URL("service-worker.js", options.assetBase).href;
@@ -75,11 +101,12 @@ export async function createAssistantEngine(options) {
         updateViaCache: "all"
       });
       await waitForController(scriptUrl, 8000);
-      return await CreateServiceWorkerMLCEngine(options.modelId, engineConfig);
+      serviceWorkerReady = true;
     } catch (error) {
       console.warn("smgen-assistant: service worker engine unavailable; using a dedicated worker", error);
     }
   }
+  if (serviceWorkerReady) return CreateServiceWorkerMLCEngine(options.modelId, engineConfig);
   const worker = new Worker(new URL("engine-worker.js", options.assetBase), { type: "module", name: "smgen-assistant" });
   return CreateWebWorkerMLCEngine(worker, options.modelId, engineConfig);
 }

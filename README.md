@@ -8,7 +8,7 @@ The initial page loads one small script. The assistant frame, corpus, WebLLM run
 
 The build requires Node.js 20 or newer. Visitors need a browser with WebGPU. Model loading also requires HTTPS or localhost when the browser uses the service-worker engine.
 
-The default model is `Qwen2.5-0.5B-Instruct-q4f32_1-MLC`. Its current estimate is a 290 MB download and 1,061 MB of GPU memory. The f32 build works on WebGPU adapters without the optional `shader-f16` feature. WebLLM caches downloaded model artifacts in the browser.
+The default model is `SmolLM2-360M-Instruct-q4f32_1-MLC`. Its current estimate is a 207 MB download and 580 MB of GPU memory. The f32 build works on WebGPU adapters without the optional `shader-f16` feature. WebLLM caches downloaded model artifacts in the browser.
 
 ## Install
 
@@ -86,17 +86,17 @@ greeting: Ask a question about this project.
 chunkCharacters: 4000
 
 model:
-  id: Qwen2.5-0.5B-Instruct-q4f32_1-MLC
-  label: Qwen2.5 0.5B
-  downloadMB: 290
-  memoryMB: 1061
+  id: SmolLM2-360M-Instruct-q4f32_1-MLC
+  label: SmolLM2 360M
+  downloadMB: 207
+  memoryMB: 580
 
 retrieval:
   maxChunks: 6
   maxCharacters: 12000
 ```
 
-The model ID must exist in the model list included with WebLLM 0.2.86. Models with `f16` in their quantization name require a WebGPU adapter with `shader-f16`. The size fields inform the visitor before download; they do not constrain WebLLM.
+The model ID must exist in the model list included with WebLLM 0.2.86. Models with `f16` in their quantization name require a WebGPU adapter with `shader-f16`. The assistant checks WebLLM's required adapter limits before loading a model. WebGPU does not report available VRAM, so choose a model with a conservative `memoryMB` estimate. The size fields inform the visitor before download; they do not constrain WebLLM.
 
 The configuration file can also supply `pages`, `output`, and `baseUrl`. Command flags override file settings. `BASE_URL` from the environment applies when neither the flag nor the file sets it.
 

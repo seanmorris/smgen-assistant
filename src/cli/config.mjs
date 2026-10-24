@@ -10,10 +10,10 @@ export const DEFAULT_CONFIG = /** @type {const} */ ({
   title: "Ask this site",
   greeting: "Ask a question about this documentation.",
   model: {
-    id: "Qwen2.5-0.5B-Instruct-q4f32_1-MLC",
-    label: "Qwen2.5 0.5B",
-    downloadMB: 290,
-    memoryMB: 1061
+    id: "SmolLM2-360M-Instruct-q4f32_1-MLC",
+    label: "SmolLM2 360M",
+    downloadMB: 207,
+    memoryMB: 580
   },
   retrieval: {
     maxChunks: 6,
