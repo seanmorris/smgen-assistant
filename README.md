@@ -8,7 +8,9 @@ The initial page loads one small script. The assistant frame, corpus, WebLLM run
 
 The build requires Node.js 20 or newer. Visitors need a browser with WebGPU. Model loading also requires HTTPS or localhost when the browser uses the service-worker engine.
 
-The default model is `Qwen2.5-Coder-0.5B-Instruct-q0f32-MLC`. Its current estimate is a 1,000 MB download and 2,655 MB of GPU memory. The f32 build works on WebGPU adapters without the optional `shader-f16` feature. The package pins the WebLLM 0.2.79 runtime and `v0_2_48` model library used by the WebLLM Chat example. WebLLM stores model artifacts in IndexedDB to avoid Cache API failures on redirected model shards.
+The default model is `Qwen2.5-Coder-0.5B-Instruct-q4f32_1-MLC`. Its current estimate is a 300 MB download and 1,061 MB of GPU memory. The f32 build works on WebGPU adapters without the optional `shader-f16` feature. The package pins the WebLLM 0.2.79 runtime and `v0_2_48` model library used by the WebLLM Chat example. WebLLM stores model artifacts in IndexedDB to avoid Cache API failures on redirected model shards.
+
+The browser loads a 2,048-token context and limits answers to 384 tokens. The default retrieval and conversation budgets keep the longer documentation prompt from monopolizing the GPU.
 
 ## Install
 
@@ -86,14 +88,14 @@ greeting: Ask a question about this project.
 chunkCharacters: 4000
 
 model:
-  id: Qwen2.5-Coder-0.5B-Instruct-q0f32-MLC
+  id: Qwen2.5-Coder-0.5B-Instruct-q4f32_1-MLC
   label: Qwen2.5 Coder 0.5B
-  downloadMB: 1000
-  memoryMB: 2655
+  downloadMB: 300
+  memoryMB: 1061
 
 retrieval:
-  maxChunks: 6
-  maxCharacters: 12000
+  maxChunks: 4
+  maxCharacters: 3000
 ```
 
 The model ID must exist in the model list included with WebLLM 0.2.79. Models with `f16` in their quantization name require a WebGPU adapter with `shader-f16`. The assistant checks WebLLM's required adapter limits before loading a model. WebGPU does not report available VRAM, so choose a model with a conservative `memoryMB` estimate. The size fields inform the visitor before download; they do not constrain WebLLM.

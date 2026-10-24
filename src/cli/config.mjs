@@ -10,14 +10,14 @@ export const DEFAULT_CONFIG = /** @type {const} */ ({
   title: "Ask this site",
   greeting: "Ask a question about this documentation.",
   model: {
-    id: "Qwen2.5-Coder-0.5B-Instruct-q0f32-MLC",
+    id: "Qwen2.5-Coder-0.5B-Instruct-q4f32_1-MLC",
     label: "Qwen2.5 Coder 0.5B",
-    downloadMB: 1000,
-    memoryMB: 2655
+    downloadMB: 300,
+    memoryMB: 1061
   },
   retrieval: {
-    maxChunks: 6,
-    maxCharacters: 12000
+    maxChunks: 4,
+    maxCharacters: 3000
   },
   chunkCharacters: 4000
 });

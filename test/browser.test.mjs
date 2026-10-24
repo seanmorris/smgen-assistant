@@ -89,9 +89,9 @@ test("model artifacts use large-file storage without Cache.add", () => {
   const appConfig = createModelAppConfig();
   assert.equal(appConfig.useIndexedDBCache, true);
   const model = appConfig.model_list.find((/** @type {import('@mlc-ai/web-llm').ModelRecord} */ record) => (
-    record.model_id === "Qwen2.5-Coder-0.5B-Instruct-q0f32-MLC"
+    record.model_id === "Qwen2.5-Coder-0.5B-Instruct-q4f32_1-MLC"
   ));
-  assert.match(model?.model_lib ?? "", /\/v0_2_48\/Qwen2-0\.5B-Instruct-q0f32/u);
+  assert.match(model?.model_lib ?? "", /\/v0_2_48\/Qwen2-0\.5B-Instruct-q4f32_1/u);
 });
 
 test("adapter checks reject unsupported WebLLM limits before model loading", () => {
@@ -116,15 +116,22 @@ test("adapter checks reject unsupported WebLLM limits before model loading", () 
 
 test("model loading retries only Cache API network failures", async () => {
   let attempts = 0;
+  /** @type {import('@mlc-ai/web-llm').ChatOptions | undefined} */
+  let receivedOptions;
   const retryingEngine = /** @type {import('@mlc-ai/web-llm').MLCEngineInterface} */ (/** @type {unknown} */ ({
-    reload: async () => {
+    reload: async (
+      /** @type {string | string[]} */ _modelId,
+      /** @type {import('@mlc-ai/web-llm').ChatOptions | import('@mlc-ai/web-llm').ChatOptions[] | undefined} */ chatOptions
+    ) => {
       attempts += 1;
+      receivedOptions = Array.isArray(chatOptions) ? chatOptions[0] : chatOptions;
       if (attempts === 1) throw new DOMException("Cache.add() encountered a network error", "NetworkError");
     }
   }));
   assert.equal(isCacheNetworkError(new DOMException("Cache.add() encountered a network error", "NetworkError")), true);
   await loadModelWithRetry(retryingEngine, "model-q0f32");
   assert.equal(attempts, 2);
+  assert.equal(receivedOptions?.context_window_size, 2048);
 
   attempts = 0;
   const failingEngine = /** @type {import('@mlc-ai/web-llm').MLCEngineInterface} */ (/** @type {unknown} */ ({
@@ -143,6 +150,7 @@ test("service worker uses the assistant directory as its scope", async () => {
   assert.match(source, /controller\?\.scriptURL !== scriptUrl/u);
   assert.match(source, /new ServiceWorkerMLCEngine\(engineConfig, 5000\)/u);
   assert.match(source, /updateViaCache: "none"/u);
+  assert.match(source, /controller\.postMessage\(\{ kind: "unload"/u);
   assert.equal(
     serviceWorkerScriptUrl(
       new URL("https://example.test/docs/__smgen-assistant/"),

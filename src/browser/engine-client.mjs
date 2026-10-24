@@ -68,6 +68,41 @@ export function serviceWorkerScriptUrl(assetBase, version = VERSION) {
 }
 
 /**
+ * Release a model held by the previous assistant worker before replacing it.
+ *
+ * @param {string} scriptUrl
+ * @param {number} timeout
+ * @returns {Promise<void>}
+ */
+async function unloadPreviousServiceWorker(scriptUrl, timeout) {
+  const controller = navigator.serviceWorker.controller;
+  if (!controller) return;
+  const currentUrl = new URL(controller.scriptURL);
+  const nextUrl = new URL(scriptUrl);
+  if (currentUrl.origin !== nextUrl.origin || currentUrl.pathname !== nextUrl.pathname || currentUrl.href === nextUrl.href) return;
+  const requestId = crypto.randomUUID();
+  await new Promise((resolve) => {
+    const timer = window.setTimeout(finish, timeout);
+    /** Remove the temporary listener after a response or timeout. */
+    function finish() {
+      window.clearTimeout(timer);
+      navigator.serviceWorker.removeEventListener("message", receive);
+      resolve(undefined);
+    }
+    /**
+     * Finish when the previous WebLLM handler answers the unload request.
+     *
+     * @param {MessageEvent} event
+     */
+    function receive(event) {
+      if (event.data?.uuid === requestId && (event.data.kind === "return" || event.data.kind === "throw")) finish();
+    }
+    navigator.serviceWorker.addEventListener("message", receive);
+    controller.postMessage({ kind: "unload", uuid: requestId, content: null });
+  });
+}
+
+/**
  * Ask the active assistant worker whether WebGPU is available in its scope.
  *
  * @param {number} timeout
@@ -145,14 +180,15 @@ export function isCacheNetworkError(error) {
  *
  * @param {MLCEngineInterface} engine
  * @param {string} modelId
+ * @param {import('@mlc-ai/web-llm').ChatOptions} [chatOptions]
  * @returns {Promise<MLCEngineInterface>}
  */
-export async function loadModelWithRetry(engine, modelId) {
+export async function loadModelWithRetry(engine, modelId, chatOptions = { context_window_size: 2048 }) {
   try {
-    await engine.reload(modelId);
+    await engine.reload(modelId, chatOptions);
   } catch (error) {
     if (!isCacheNetworkError(error)) throw error;
-    await engine.reload(modelId);
+    await engine.reload(modelId, chatOptions);
   }
   return engine;
 }
@@ -203,6 +239,7 @@ export async function createAssistantEngine(options) {
   if (!options.forceDedicatedWorker && "serviceWorker" in navigator && location.protocol !== "file:") {
     try {
       const scriptUrl = serviceWorkerScriptUrl(options.assetBase);
+      await unloadPreviousServiceWorker(scriptUrl, 2000);
       await navigator.serviceWorker.register(scriptUrl, {
         scope: "./",
         type: "module",
@@ -250,7 +287,7 @@ export async function streamAnswer(engine, messages, onText, signal) {
       messages,
       stream: true,
       temperature: 0.2,
-      max_tokens: 512
+      max_tokens: 384
     });
     for await (const chunk of response) {
       if (signal.aborted) break;

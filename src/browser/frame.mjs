@@ -1,6 +1,7 @@
 // @ts-check
 
 import { formatContext, retrieveChunks } from "../shared/retrieval.mjs";
+import { recentMessages } from "../shared/conversation.mjs";
 import { renderMarkdown } from "./render.mjs";
 
 /** @typedef {import('../shared/types.mjs').Corpus} Corpus */
@@ -172,7 +173,7 @@ async function enableModel() {
  * @param {CorpusChunk[]} sources
  */
 function promptMessages(sources) {
-  const recent = transcript.slice(-6).map((message) => ({ role: message.role, content: message.content }));
+  const recent = recentMessages(transcript, 4, 1800).map((message) => ({ role: message.role, content: message.content }));
   return /** @type {Array<{role: "system" | "user" | "assistant", content: string}>} */ ([
     {
       role: "system",
