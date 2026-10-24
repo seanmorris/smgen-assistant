@@ -17,10 +17,11 @@ export function safeLink(value) {
  *
  * @param {HTMLElement} parent
  * @param {string} text
+ * @param {Array<{url: string}>} sources
  * @param {Document} doc
  */
-function appendInline(parent, text, doc) {
-  const pattern = /(`[^`\n]+`|\*\*[^*\n]+\*\*|\*[^*\n]+\*|\[[^\]\n]+\]\([^\s)]+\))/gu;
+function appendInline(parent, text, sources, doc) {
+  const pattern = /(`[^`\n]+`|\*\*[^*\n]+\*\*|\*[^*\n]+\*|\[[^\]\n]+\]\([^\s)]+\)|\[Source \d+\])/gu;
   let cursor = 0;
   for (const match of text.matchAll(pattern)) {
     const index = match.index ?? 0;
@@ -38,6 +39,20 @@ function appendInline(parent, text, doc) {
       const emphasis = doc.createElement("em");
       emphasis.textContent = token.slice(1, -1);
       parent.append(emphasis);
+    } else if (/^\[Source \d+\]$/u.test(token)) {
+      const sourceNumber = Number.parseInt(token.match(/\d+/u)?.[0] ?? "0", 10);
+      const href = safeLink(sources[sourceNumber - 1]?.url ?? "");
+      if (href) {
+        const anchor = doc.createElement("a");
+        anchor.className = "citation";
+        anchor.textContent = token;
+        anchor.href = href;
+        anchor.target = "_top";
+        anchor.rel = "noopener noreferrer";
+        parent.append(anchor);
+      } else {
+        parent.append(doc.createTextNode(token));
+      }
     } else {
       const link = token.match(/^\[([^\]]+)\]\(([^)]+)\)$/u);
       const href = safeLink(link?.[2] ?? "");
@@ -62,9 +77,10 @@ function appendInline(parent, text, doc) {
  *
  * @param {HTMLElement} container
  * @param {string} markdown
+ * @param {Array<{url: string}>} [sources]
  * @param {Document} [doc]
  */
-export function renderMarkdown(container, markdown, doc = document) {
+export function renderMarkdown(container, markdown, sources = [], doc = document) {
   container.replaceChildren();
   const lines = markdown.replace(/\r\n?/gu, "\n").split("\n");
   let index = 0;
@@ -95,7 +111,7 @@ export function renderMarkdown(container, markdown, doc = document) {
     const heading = line.match(/^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$/u);
     if (heading) {
       const element = doc.createElement(`h${Math.min((heading[1]?.length ?? 1) + 1, 6)}`);
-      appendInline(element, heading[2] ?? "", doc);
+      appendInline(element, heading[2] ?? "", sources, doc);
       container.append(element);
       index += 1;
       continue;
@@ -106,9 +122,20 @@ export function renderMarkdown(container, markdown, doc = document) {
       const element = doc.createElement(ordered ? "ol" : "ul");
       while (index < lines.length) {
         const item = (lines[index] ?? "").match(/^\s*(?:([-*+])|(\d+\.))\s+(.+)$/u);
-        if (!item || Boolean(item[2]) !== ordered) break;
+        if (!item || Boolean(item[2]) !== ordered) {
+          if (!(lines[index] ?? "").trim()) {
+            let next = index + 1;
+            while (next < lines.length && !(lines[next] ?? "").trim()) next += 1;
+            const following = (lines[next] ?? "").match(/^\s*(?:([-*+])|(\d+\.))\s+(.+)$/u);
+            if (following && Boolean(following[2]) === ordered) {
+              index = next;
+              continue;
+            }
+          }
+          break;
+        }
         const child = doc.createElement("li");
-        appendInline(child, item[3] ?? "", doc);
+        appendInline(child, item[3] ?? "", sources, doc);
         element.append(child);
         index += 1;
       }
@@ -125,7 +152,7 @@ export function renderMarkdown(container, markdown, doc = document) {
         quoteLines.push(item[1] ?? "");
         index += 1;
       }
-      appendInline(element, quoteLines.join(" "), doc);
+      appendInline(element, quoteLines.join(" "), sources, doc);
       container.append(element);
       continue;
     }
@@ -136,7 +163,7 @@ export function renderMarkdown(container, markdown, doc = document) {
       index += 1;
     }
     const paragraph = doc.createElement("p");
-    appendInline(paragraph, paragraphLines.join(" "), doc);
+    appendInline(paragraph, paragraphLines.join(" "), sources, doc);
     container.append(paragraph);
   }
 }

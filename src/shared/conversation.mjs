@@ -16,7 +16,7 @@ export function recentMessages(messages, maxMessages, maxCharacters) {
   for (let index = messages.length - 1; index >= 0 && selected.length < maxMessages; index -= 1) {
     const message = messages[index];
     if (!message) continue;
-    if (selected.length && characters + message.content.length > maxCharacters) break;
+    if (characters + message.content.length > maxCharacters) break;
     selected.unshift(message);
     characters += message.content.length;
   }

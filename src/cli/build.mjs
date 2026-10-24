@@ -82,7 +82,8 @@ export async function buildSiteAssistant(config) {
   try {
     const corpus = await buildCorpus(pages, {
       baseUrl: config.baseUrl,
-      chunkCharacters: config.chunkCharacters
+      chunkCharacters: config.chunkCharacters,
+      renderedDirectory: output
     });
     const browserAssets = await resolveBrowserAssets();
     await cp(browserAssets, stage, { recursive: true, force: true });

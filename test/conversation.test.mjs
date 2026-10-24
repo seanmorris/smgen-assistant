@@ -15,7 +15,7 @@ test("recent conversation stays within count and character budgets", () => {
   assert.deepEqual(recentMessages(messages, 1, 1000), messages.slice(3));
 });
 
-test("recent conversation always keeps the newest message", () => {
+test("recent conversation rejects a newest message beyond the budget", () => {
   const messages = [{ content: "x".repeat(2000) }];
-  assert.deepEqual(recentMessages(messages, 4, 1000), messages);
+  assert.deepEqual(recentMessages(messages, 4, 1000), []);
 });

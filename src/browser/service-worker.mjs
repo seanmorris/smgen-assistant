@@ -1,6 +1,7 @@
 // @ts-check
 
 import { ServiceWorkerMLCEngineHandler } from "@mlc-ai/web-llm";
+import { handleAssistantWorkerMessage } from "./prompt-tokens.mjs";
 
 const workerScope = /** @type {ServiceWorkerGlobalScope} */ (/** @type {unknown} */ (self));
 workerScope.addEventListener("message", (event) => {
@@ -16,7 +17,30 @@ workerScope.addEventListener("message", (event) => {
   })());
 });
 
-new ServiceWorkerMLCEngineHandler();
+class AssistantServiceWorkerHandler extends ServiceWorkerMLCEngineHandler {
+  /**
+   * Route assistant requests before delegating to WebLLM.
+   *
+   * @param {ExtendableMessageEvent} event
+   * @param {(value: unknown) => void} [onComplete]
+   * @param {() => void} [onError]
+   */
+  onmessage(event, onComplete, onError) {
+    const handler = /** @type {ServiceWorkerMLCEngineHandler & {
+     *   engine: unknown,
+     *   handleTask: (uuid: string, task: () => Promise<number>) => Promise<void>,
+     *   reloadIfUnmatched: (modelId: string[], chatOpts?: unknown[]) => Promise<void>
+     * }} */ (/** @type {unknown} */ (this));
+    handleAssistantWorkerMessage({
+      engine: handler.engine,
+      handleTask: handler.handleTask.bind(this),
+      reloadIfUnmatched: handler.reloadIfUnmatched.bind(this),
+      onmessage: super.onmessage.bind(this)
+    }, event, onComplete, onError);
+  }
+}
+
+new AssistantServiceWorkerHandler();
 
 workerScope.addEventListener("install", (event) => {
   event.waitUntil(workerScope.skipWaiting());

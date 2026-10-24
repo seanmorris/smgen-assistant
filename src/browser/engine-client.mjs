@@ -286,7 +286,7 @@ export async function streamAnswer(engine, messages, onText, signal) {
     const response = await engine.chat.completions.create({
       messages,
       stream: true,
-      temperature: 0.2,
+      temperature: 0,
       max_tokens: 384
     });
     for await (const chunk of response) {
@@ -297,4 +297,38 @@ export async function streamAnswer(engine, messages, onText, signal) {
   } finally {
     signal.removeEventListener("abort", stop);
   }
+}
+
+/**
+ * Count a chat prompt with the tokenizer already loaded in the WebLLM worker.
+ *
+ * @param {MLCEngineInterface} engine
+ * @param {Array<{role: "system" | "user" | "assistant", content: string}>} messages
+ * @returns {Promise<number>}
+ */
+export async function countPromptTokens(engine, messages) {
+  const client = /** @type {MLCEngineInterface & {
+   *   modelId?: string[],
+   *   chatOpts?: import('@mlc-ai/web-llm').ChatOptions[],
+   *   getPromise: (request: unknown) => Promise<number>
+   * }} */ (engine);
+  return client.getPromise({
+    kind: "customRequest",
+    uuid: crypto.randomUUID(),
+    content: {
+      requestName: "smgen-assistant:count-prompt",
+      requestMessage: JSON.stringify({ messages, modelId: client.modelId ?? [], chatOpts: client.chatOpts })
+    }
+  });
+}
+
+/**
+ * Identify prompt-size validation failures reported by WebLLM.
+ *
+ * @param {unknown} error
+ * @returns {boolean}
+ */
+export function isContextWindowError(error) {
+  const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  return /ContextWindowSizeExceededError|context window size|prompt.*too (?:long|large)/iu.test(message);
 }

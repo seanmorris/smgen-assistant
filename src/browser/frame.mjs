@@ -1,7 +1,7 @@
 // @ts-check
 
-import { formatContext, retrieveChunks } from "../shared/retrieval.mjs";
-import { recentMessages } from "../shared/conversation.mjs";
+import { retrieveChunks } from "../shared/retrieval.mjs";
+import { fitPrompt, MAX_QUESTION_CHARACTERS } from "../shared/prompt.mjs";
 import { renderMarkdown } from "./render.mjs";
 
 /** @typedef {import('../shared/types.mjs').Corpus} Corpus */
@@ -10,26 +10,33 @@ import { renderMarkdown } from "./render.mjs";
 /** @typedef {import('@mlc-ai/web-llm').MLCEngineInterface} MLCEngineInterface */
 
 /**
+ * @typedef {object} SourceLink
+ * @property {string} title
+ * @property {string} heading
+ * @property {string} url
+ */
+
+/**
  * @typedef {object} TranscriptMessage
  * @property {"user" | "assistant"} role
  * @property {string} content
- * @property {Array<{title: string, heading: string, url: string}>} [sources]
+ * @property {SourceLink[]} [sources]
  */
 
 const assetBase = new URL("./", import.meta.url);
-const transcriptKey = `smgen-assistant:transcript:v1:${assetBase.pathname}`;
+const transcriptKey = `smgen-assistant:transcript:v2:${assetBase.pathname}`;
 const titleElement = /** @type {HTMLHeadingElement} */ (document.querySelector("#assistant-title"));
 const statusElement = /** @type {HTMLParagraphElement} */ (document.querySelector("#status"));
-const consentElement = /** @type {HTMLElement} */ (document.querySelector("#consent"));
-const detailsElement = /** @type {HTMLParagraphElement} */ (document.querySelector("#model-details"));
-const enableButton = /** @type {HTMLButtonElement} */ (document.querySelector("#enable"));
-const progressElement = /** @type {HTMLProgressElement} */ (document.querySelector("#progress"));
-const progressLabel = /** @type {HTMLParagraphElement} */ (document.querySelector("#progress-label"));
+const liveStatusElement = /** @type {HTMLParagraphElement} */ (document.querySelector("#live-status"));
+const modelNoteElement = /** @type {HTMLSpanElement} */ (document.querySelector("#model-note"));
+const characterCountElement = /** @type {HTMLSpanElement} */ (document.querySelector("#character-count"));
 const messagesElement = /** @type {HTMLElement} */ (document.querySelector("#messages"));
 const form = /** @type {HTMLFormElement} */ (document.querySelector("#question-form"));
 const questionElement = /** @type {HTMLTextAreaElement} */ (document.querySelector("#question"));
 const submitButton = /** @type {HTMLButtonElement} */ (document.querySelector("#submit"));
 const cancelButton = /** @type {HTMLButtonElement} */ (document.querySelector("#cancel"));
+const newChatButton = /** @type {HTMLButtonElement} */ (document.querySelector("#new-chat"));
+const maximizeButton = /** @type {HTMLButtonElement} */ (document.querySelector("#maximize"));
 const closeButton = /** @type {HTMLButtonElement} */ (document.querySelector("#close"));
 
 /** @type {Corpus | null} */
@@ -45,6 +52,7 @@ let generation = null;
 let pageContext = { url: "", title: "" };
 /** @type {TranscriptMessage[]} */
 let transcript = [];
+let maximized = false;
 
 /**
  * Fetch one generated JSON asset from the assistant directory.
@@ -59,14 +67,14 @@ async function fetchJson(name) {
   return /** @type {Promise<T>} */ (response.json());
 }
 
-/** Save the latest conversation turns for this browser tab. */
+/** Save completed conversation turns for this browser tab. */
 function storeTranscript() {
   try {
     sessionStorage.setItem(transcriptKey, JSON.stringify(transcript.slice(-20)));
   } catch {}
 }
 
-/** Restore valid conversation turns from this browser tab. */
+/** Restore valid completed conversation turns from this browser tab. */
 function restoreTranscript() {
   try {
     const saved = JSON.parse(sessionStorage.getItem(transcriptKey) ?? "[]");
@@ -76,23 +84,30 @@ function restoreTranscript() {
   } catch {}
 }
 
+/** Report whether the conversation was already resting at its bottom edge. */
+function isNearBottom() {
+  return messagesElement.scrollHeight - messagesElement.scrollTop - messagesElement.clientHeight < 48;
+}
+
+/** Scroll the conversation to its newest content. */
+function scrollToBottom() {
+  messagesElement.scrollTop = messagesElement.scrollHeight;
+}
+
 /**
- * Build the separately rendered list of documentation sources.
+ * Build a folded list of documentation sources.
  *
- * @param {Array<{title: string, heading: string, url: string}>} sources
+ * @param {SourceLink[]} sources
  */
 function sourceList(sources) {
-  if (!sources.length) return null;
-  const section = document.createElement("section");
-  section.className = "sources";
-  const label = document.createElement("strong");
-  label.textContent = "Documentation used";
+  const unique = sources.filter((source, index) => sources.findIndex((candidate) => candidate.url === source.url) === index);
+  if (!unique.length) return null;
+  const details = document.createElement("details");
+  details.className = "sources";
+  const summary = document.createElement("summary");
+  summary.textContent = `${unique.length} documentation ${unique.length === 1 ? "source" : "sources"}`;
   const list = document.createElement("ul");
-  const seen = new Set();
-  for (const source of sources) {
-    const key = `${source.url}\u0000${source.heading}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
+  for (const source of unique) {
     const item = document.createElement("li");
     const link = document.createElement("a");
     link.href = source.url;
@@ -102,12 +117,12 @@ function sourceList(sources) {
     item.append(link);
     list.append(item);
   }
-  section.append(label, list);
-  return section;
+  details.append(summary, list);
+  return details;
 }
 
 /**
- * Append one conversation turn and its source links to the transcript.
+ * Render one conversation turn.
  *
  * @param {TranscriptMessage} message
  * @param {boolean} [scroll]
@@ -115,153 +130,266 @@ function sourceList(sources) {
 function appendMessage(message, scroll = true) {
   const article = document.createElement("article");
   article.className = `message ${message.role}`;
-  if (message.role === "assistant") renderMarkdown(article, message.content);
+  if (message.role === "assistant") renderMarkdown(article, message.content, message.sources ?? []);
   else article.textContent = message.content;
   const sources = sourceList(message.sources ?? []);
   if (sources) article.append(sources);
   messagesElement.append(article);
-  if (scroll) article.scrollIntoView({ block: "end" });
+  if (scroll) scrollToBottom();
   return article;
 }
 
-/** Render all restored conversation turns without forcing scroll. */
+/** Render the restored conversation or its one-line greeting. */
 function renderTranscript() {
   messagesElement.replaceChildren();
-  for (const message of transcript) appendMessage(message, false);
-}
-
-/** Enable the question controls after the model finishes loading. */
-function setReady() {
-  questionElement.disabled = false;
-  submitButton.disabled = false;
-  consentElement.hidden = true;
-  statusElement.textContent = "Ready on this device";
-  questionElement.focus();
-}
-
-/** Load the WebLLM module and model after explicit visitor consent. */
-async function enableModel() {
-  if (!config || engine) return;
-  enableButton.disabled = true;
-  progressElement.hidden = false;
-  progressLabel.textContent = "Preparing WebLLM…";
-  try {
-    const module = await import("./engine-client.mjs");
-    engine = await module.createAssistantEngine({
-      modelId: config.model.id,
-      assetBase,
-      forceDedicatedWorker,
-      onProgress: (report) => {
-        progressElement.value = Math.max(0, Math.min(1, report.progress));
-        progressLabel.textContent = report.text;
-      }
-    });
-    setReady();
-  } catch (error) {
-    engine = null;
-    forceDedicatedWorker = true;
-    enableButton.disabled = false;
-    progressElement.hidden = true;
-    progressLabel.textContent = error instanceof Error ? error.message : String(error);
-    statusElement.textContent = "Model could not start";
-  }
+  if (!transcript.length && config) appendMessage({ role: "assistant", content: config.greeting }, false);
+  else for (const message of transcript) appendMessage(message, false);
+  scrollToBottom();
 }
 
 /**
- * Construct a grounded model conversation from retrieved documentation.
+ * Render a temporary assistant activity message.
  *
- * @param {CorpusChunk[]} sources
+ * @param {string} text
  */
-function promptMessages(sources) {
-  const recent = recentMessages(transcript, 4, 1800).map((message) => ({ role: message.role, content: message.content }));
-  return /** @type {Array<{role: "system" | "user" | "assistant", content: string}>} */ ([
-    {
-      role: "system",
-      content: `Answer questions using only the supplied documentation. If the documentation does not contain the answer, say so. Cite supporting passages as [Source 1], [Source 2], and so on. Do not claim to run code, browse the web, or change the page.\n\n${formatContext(sources)}`
-    },
-    ...recent
-  ]);
+function activityMessage(text) {
+  const article = document.createElement("article");
+  article.className = "message assistant activity";
+  const label = document.createElement("p");
+  label.textContent = text;
+  const progress = document.createElement("progress");
+  progress.max = 1;
+  progress.removeAttribute("value");
+  article.append(label, progress);
+  messagesElement.append(article);
+  scrollToBottom();
+  return { article, label, progress };
 }
 
-/** Retrieve local context and stream an answer for the current question. */
-async function askQuestion() {
-  if (!engine || !config || !corpus || generation) return;
-  const question = questionElement.value.trim();
-  if (!question) return;
-  questionElement.value = "";
-  const userMessage = /** @type {TranscriptMessage} */ ({ role: "user", content: question });
-  transcript.push(userMessage);
-  appendMessage(userMessage);
-  const sources = retrieveChunks(corpus.chunks, question, {
-    ...config.retrieval,
-    currentUrl: pageContext.url
+/**
+ * Replace temporary content with a compact retry message.
+ *
+ * @param {HTMLElement} article
+ * @param {string} question
+ * @param {string} message
+ */
+function showRetry(article, question, message) {
+  article.className = "message assistant error";
+  const paragraph = document.createElement("p");
+  paragraph.textContent = message;
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.className = "retry";
+  retry.textContent = "Try again";
+  retry.addEventListener("click", () => {
+    article.remove();
+    void askQuestion(question);
+  }, { once: true });
+  article.replaceChildren(paragraph, retry);
+  scrollToBottom();
+}
+
+/**
+ * Update the composer controls and status while work is active.
+ *
+ * @param {boolean} working
+ */
+function setWorking(working) {
+  questionElement.disabled = working || !config || !("gpu" in navigator);
+  submitButton.disabled = working || !config || !("gpu" in navigator);
+  cancelButton.hidden = !generation;
+}
+
+/**
+ * Start WebLLM on the first question and report progress in the conversation.
+ *
+ * @param {{article: HTMLElement, label: HTMLParagraphElement, progress: HTMLProgressElement}} activity
+ */
+async function ensureEngine(activity) {
+  if (engine) return engine;
+  if (!config) throw new Error("Assistant configuration has not loaded.");
+  statusElement.textContent = "Downloading model";
+  liveStatusElement.textContent = "Downloading the assistant model.";
+  modelNoteElement.textContent = `${config.model.label}, about ${config.model.downloadMB} MB. Cached after the first run.`;
+  const module = await import("./engine-client.mjs");
+  engine = await module.createAssistantEngine({
+    modelId: config.model.id,
+    assetBase,
+    forceDedicatedWorker,
+    onProgress: (report) => {
+      activity.progress.value = Math.max(0, Math.min(1, report.progress));
+      activity.label.textContent = report.text || "Downloading model…";
+    }
   });
-  if (!sources.length) {
-    const missing = /** @type {TranscriptMessage} */ ({
-      role: "assistant",
-      content: "I could not find a relevant passage in this site's documentation. Try a more specific term or identifier."
-    });
-    transcript.push(missing);
-    appendMessage(missing);
+  modelNoteElement.textContent = "Runs privately in this browser.";
+  return engine;
+}
+
+/** Find the newest prior user question without feeding model answers back to it. */
+function previousUserQuestion() {
+  return [...transcript].reverse().find((message) => message.role === "user")?.content ?? "";
+}
+
+/**
+ * Turn retrieved chunks into the source metadata shown to visitors.
+ *
+ * @param {CorpusChunk[]} chunks
+ */
+function sourceLinks(chunks) {
+  return chunks.map(({ title, heading, url }) => ({ title, heading, url }));
+}
+
+/**
+ * Ask the local model one question.
+ *
+ * @param {string} [suppliedQuestion]
+ */
+async function askQuestion(suppliedQuestion) {
+  if (!config || !corpus || generation) return;
+  const question = (suppliedQuestion ?? questionElement.value).trim();
+  if (!question) return;
+  if (question.length > MAX_QUESTION_CHARACTERS) {
+    questionElement.setCustomValidity(`Keep the question under ${MAX_QUESTION_CHARACTERS} characters.`);
+    questionElement.reportValidity();
+    return;
+  }
+  questionElement.setCustomValidity("");
+  questionElement.value = "";
+  characterCountElement.textContent = `0 / ${MAX_QUESTION_CHARACTERS}`;
+  appendMessage({ role: "user", content: question });
+
+  if (/^(?:hi|hello|hey)[!. ]*$/iu.test(question)) {
+    const answer = /** @type {TranscriptMessage} */ ({ role: "assistant", content: config.greeting });
+    appendMessage(answer);
+    transcript.push({ role: "user", content: question }, answer);
+    transcript = transcript.slice(-20);
     storeTranscript();
     return;
   }
 
-  const assistantMessage = /** @type {TranscriptMessage} */ ({
-    role: "assistant",
-    content: "",
-    sources: sources.map(({ title, heading, url }) => ({ title, heading, url }))
-  });
-  const article = appendMessage(assistantMessage);
-  generation = new AbortController();
-  questionElement.disabled = true;
-  submitButton.disabled = true;
-  cancelButton.hidden = false;
-  statusElement.textContent = "Writing an answer…";
-  try {
-    const module = await import("./engine-client.mjs");
-    await module.streamAnswer(engine, promptMessages(sources), (text) => {
-      assistantMessage.content += text;
-      const sourceSection = article.querySelector(".sources");
-      renderMarkdown(article, assistantMessage.content);
-      if (sourceSection) article.append(sourceSection);
-      article.scrollIntoView({ block: "end" });
-    }, generation.signal);
-    if (!assistantMessage.content) assistantMessage.content = generation.signal.aborted ? "Answer stopped." : "The model returned an empty answer.";
-  } catch (error) {
-    assistantMessage.content = assistantMessage.content || `The model stopped with an error: ${error instanceof Error ? error.message : String(error)}`;
-    if (!generation.signal.aborted) {
-      const failedEngine = engine;
-      engine = null;
-      forceDedicatedWorker = true;
-      if (failedEngine) {
-        const module = await import("./engine-client.mjs");
-        await module.releaseAssistantEngine(failedEngine);
-      }
-      consentElement.hidden = false;
-      enableButton.disabled = false;
-      progressElement.hidden = true;
-      progressLabel.textContent = "Start the model again to recover from this error.";
-    }
-  } finally {
-    const sourceSection = article.querySelector(".sources");
-    renderMarkdown(article, assistantMessage.content);
-    if (sourceSection) article.append(sourceSection);
-    transcript.push(assistantMessage);
+  const retrieved = retrieveChunks(corpus.chunks, question, { ...config.retrieval, currentUrl: pageContext.url });
+  if (!retrieved.length) {
+    const answer = /** @type {TranscriptMessage} */ ({
+      role: "assistant",
+      content: "I could not find that in this site's documentation. Try a more specific term or identifier."
+    });
+    appendMessage(answer);
+    transcript.push({ role: "user", content: question }, answer);
     transcript = transcript.slice(-20);
     storeTranscript();
-    generation = null;
-    questionElement.disabled = !engine;
-    submitButton.disabled = !engine;
-    cancelButton.hidden = true;
-    statusElement.textContent = engine ? "Ready on this device" : "Model stopped";
-    if (engine) questionElement.focus();
+    return;
   }
+
+  const activity = activityMessage(engine ? "Preparing sources…" : "Starting the assistant…");
+  generation = new AbortController();
+  setWorking(true);
+  try {
+    const activeEngine = await ensureEngine(activity);
+    if (generation.signal.aborted) throw new DOMException("The answer was stopped.", "AbortError");
+    statusElement.textContent = "Preparing answer";
+    activity.label.textContent = "Checking the question and sources…";
+    activity.progress.removeAttribute("value");
+    const module = await import("./engine-client.mjs");
+    const fitted = await fitPrompt(
+      question,
+      retrieved,
+      previousUserQuestion(),
+      (messages) => module.countPromptTokens(activeEngine, messages)
+    );
+    if (!fitted) {
+      activity.article.className = "message assistant error";
+      activity.article.textContent = "That question is too long for this model. Shorten it and try again.";
+      return;
+    }
+    if (!fitted.sources.length) {
+      activity.article.className = "message assistant";
+      activity.article.textContent = "The question fits, but there is not enough room for a documentation passage. Shorten the question and try again.";
+      return;
+    }
+
+    const assistantMessage = /** @type {TranscriptMessage} */ ({
+      role: "assistant",
+      content: "",
+      sources: sourceLinks(fitted.sources)
+    });
+    const article = activity.article;
+    article.className = "message assistant";
+    article.replaceChildren();
+    statusElement.textContent = "Answering";
+    liveStatusElement.textContent = "The assistant is answering.";
+    let frameRequest = 0;
+    let stickToBottom = true;
+    /** Render accumulated stream text at most once per animation frame. */
+    const renderStream = () => {
+      frameRequest = 0;
+      renderMarkdown(article, assistantMessage.content, assistantMessage.sources ?? []);
+      if (stickToBottom) scrollToBottom();
+    };
+    await module.streamAnswer(activeEngine, fitted.messages, (text) => {
+      stickToBottom = isNearBottom();
+      assistantMessage.content += text;
+      if (!frameRequest) frameRequest = requestAnimationFrame(renderStream);
+    }, generation.signal);
+    if (frameRequest) {
+      cancelAnimationFrame(frameRequest);
+      renderStream();
+    }
+    if (!assistantMessage.content.trim()) {
+      assistantMessage.content = generation.signal.aborted ? "Answer stopped." : "I could not produce an answer from those passages.";
+    }
+    renderMarkdown(article, assistantMessage.content, assistantMessage.sources ?? []);
+    const sources = sourceList(assistantMessage.sources ?? []);
+    if (sources) article.append(sources);
+    transcript.push({ role: "user", content: question }, assistantMessage);
+    transcript = transcript.slice(-20);
+    storeTranscript();
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      activity.article.className = "message assistant";
+      activity.article.textContent = "Answer stopped.";
+    } else {
+      console.error("smgen-assistant: question failed", error);
+      const module = await import("./engine-client.mjs");
+      if (module.isContextWindowError(error)) {
+        activity.article.className = "message assistant error";
+        activity.article.textContent = "That question and its sources are too long for this model. Shorten the question and try again.";
+      } else {
+        const failedEngine = engine;
+        engine = null;
+        forceDedicatedWorker = true;
+        if (failedEngine) await module.releaseAssistantEngine(failedEngine);
+        modelNoteElement.textContent = "The model will restart when you try again.";
+        showRetry(activity.article, question, "The model stopped before it could answer.");
+      }
+    }
+  } finally {
+    generation = null;
+    setWorking(false);
+    statusElement.textContent = engine ? "Ready" : "Starts with your first question";
+    liveStatusElement.textContent = engine ? "The assistant is ready." : "";
+    questionElement.focus();
+    scrollToBottom();
+  }
+}
+
+/** Clear the visible and stored conversation while keeping a loaded model. */
+async function newChat() {
+  generation?.abort();
+  transcript = [];
+  storeTranscript();
+  if (engine) await engine.resetChat();
+  renderTranscript();
+  liveStatusElement.textContent = "Started a new chat.";
+  questionElement.focus();
 }
 
 form.addEventListener("submit", (event) => {
   event.preventDefault();
   void askQuestion();
+});
+questionElement.addEventListener("input", () => {
+  questionElement.setCustomValidity("");
+  characterCountElement.textContent = `${questionElement.value.length} / ${MAX_QUESTION_CHARACTERS}`;
 });
 questionElement.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.shiftKey) {
@@ -269,8 +397,9 @@ questionElement.addEventListener("keydown", (event) => {
     form.requestSubmit();
   }
 });
-enableButton.addEventListener("click", () => void enableModel());
 cancelButton.addEventListener("click", () => generation?.abort());
+newChatButton.addEventListener("click", () => void newChat());
+maximizeButton.addEventListener("click", () => window.parent.postMessage({ type: "smgen-assistant:toggle-maximize" }, location.origin));
 closeButton.addEventListener("click", () => window.parent.postMessage({ type: "smgen-assistant:close" }, location.origin));
 window.addEventListener("keydown", (event) => {
   if (event.key === "Escape") window.parent.postMessage({ type: "smgen-assistant:close" }, location.origin);
@@ -280,9 +409,15 @@ window.addEventListener("message", (event) => {
   if (event.data.type === "smgen-assistant:context" && typeof event.data.url === "string" && typeof event.data.title === "string") {
     pageContext = { url: event.data.url, title: event.data.title };
   }
+  if (event.data.type === "smgen-assistant:layout" && typeof event.data.maximized === "boolean") {
+    maximized = event.data.maximized;
+    maximizeButton.textContent = maximized ? "↙" : "↗";
+    maximizeButton.setAttribute("aria-label", maximized ? "Restore assistant size" : "Expand assistant");
+    maximizeButton.title = maximized ? "Restore assistant size" : "Expand assistant";
+  }
 });
 
-/** Load generated data and initialize the inactive assistant interface. */
+/** Load generated data and initialize the first-question interface. */
 async function start() {
   try {
     const [loadedConfig, loadedCorpus] = await Promise.all([
@@ -292,26 +427,25 @@ async function start() {
     config = loadedConfig;
     corpus = loadedCorpus;
     titleElement.textContent = loadedConfig.title;
-    detailsElement.textContent = `${loadedConfig.model.label} downloads about ${loadedConfig.model.downloadMB} MB and uses about ${loadedConfig.model.memoryMB} MB of GPU memory.`;
-    consentElement.hidden = false;
-    if (!("gpu" in navigator)) {
-      enableButton.disabled = true;
-      progressLabel.textContent = "This browser does not provide WebGPU.";
-      statusElement.textContent = "WebGPU unavailable";
-    } else {
-      statusElement.textContent = "Model is off";
-    }
     restoreTranscript();
-    if (!transcript.length) transcript.push({ role: "assistant", content: loadedConfig.greeting });
     renderTranscript();
+    if (!("gpu" in navigator)) {
+      statusElement.textContent = "WebGPU unavailable";
+      modelNoteElement.textContent = "This browser does not provide WebGPU.";
+    } else {
+      statusElement.textContent = "Starts with your first question";
+      modelNoteElement.textContent = `${loadedConfig.model.label}, about ${loadedConfig.model.downloadMB} MB on first use.`;
+      questionElement.disabled = false;
+      submitButton.disabled = false;
+    }
   } catch (error) {
-    statusElement.textContent = "Assistant data could not load";
-    progressLabel.textContent = error instanceof Error ? error.message : String(error);
-    consentElement.hidden = false;
-    enableButton.disabled = true;
+    console.error("smgen-assistant: data failed to load", error);
+    statusElement.textContent = "Assistant unavailable";
+    modelNoteElement.textContent = "The assistant data could not load.";
+    appendMessage({ role: "assistant", content: "The assistant data could not load. Reload the page to try again." });
   } finally {
     window.parent.postMessage({ type: "smgen-assistant:ready" }, location.origin);
-    closeButton.focus();
+    questionElement.disabled ? closeButton.focus() : questionElement.focus();
   }
 }
 

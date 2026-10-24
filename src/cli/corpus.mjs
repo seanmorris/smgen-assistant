@@ -148,17 +148,105 @@ function pageUrl(baseUrl, relative, metadata) {
   const explicit = metadata.assistantUrl ?? metadata.url;
   if (typeof explicit === "string" && explicit.trim()) {
     if (/^[a-z][a-z\d+.-]*:\/\//iu.test(explicit)) return explicit;
-    return `/${explicit.split("/").filter(Boolean).map(encodeURIComponent).join("/")}`;
+    const [pathname, fragment] = explicit.split("#", 2);
+    const encodedPath = `/${(pathname ?? "").split("/").filter(Boolean).map(encodeURIComponent).join("/")}`;
+    return fragment ? `${encodedPath}#${encodeURIComponent(fragment)}` : encodedPath;
   }
   const htmlPath = relative.replace(/\.md$/iu, ".html").split(path.sep).map(encodeURIComponent).join("/");
   return `${baseUrl}/${htmlPath}`.replace(/\/{2,}/gu, "/");
 }
 
 /**
+ * Decode enough HTML entities to compare rendered and Markdown headings.
+ *
+ * @param {string} value
+ */
+function decodeHtml(value) {
+  const named = new Map([
+    ["amp", "&"], ["apos", "'"], ["gt", ">"], ["lt", "<"], ["quot", "\""]
+  ]);
+  return value.replace(/&(?:#(x[\da-f]+|\d+)|([a-z]+));/giu, (_match, numeric, name) => {
+    if (numeric) {
+      const codePoint = numeric.toLowerCase().startsWith("x")
+        ? Number.parseInt(numeric.slice(1), 16)
+        : Number.parseInt(numeric, 10);
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : "";
+    }
+    return named.get(String(name).toLowerCase()) ?? "";
+  });
+}
+
+/**
+ * Normalize a heading for matching between Markdown and generated HTML.
+ *
+ * @param {string} value
+ */
+function comparableHeading(value) {
+  return decodeHtml(value)
+    .replace(/<[^>]*>/gu, "")
+    .replace(/\s+\{[^}]*\}\s*$/u, "")
+    .replace(/!?(?:\[([^\]]*)\])\([^)]*\)/gu, "$1")
+    .replace(/[`*_~]/gu, "")
+    .replace(/\s+/gu, " ")
+    .trim()
+    .toLocaleLowerCase("en-US");
+}
+
+/**
+ * Match source headings to their exact identifiers in generated HTML.
+ *
+ * @param {string} markdown
+ * @param {string} html
+ * @returns {Array<string | undefined>}
+ */
+export function renderedHeadingFragments(markdown, html) {
+  const rendered = [...html.matchAll(/<h([1-6])\b[^>]*\bid=(?:"([^"]+)"|'([^']+)'|([^\s>]+))[^>]*>([\s\S]*?)<\/h\1>/giu)]
+    .map((match) => ({
+      level: Number(match[1]),
+      id: decodeHtml(match[2] ?? match[3] ?? match[4] ?? ""),
+      text: comparableHeading(match[5] ?? "")
+    }));
+  const fragments = [];
+  let cursor = 0;
+  /** @type {"`" | "~" | null} */
+  let fence = null;
+  for (const line of markdown.replace(/\r\n?/gu, "\n").split("\n")) {
+    const marker = line.match(/^\s{0,3}(`{3,}|~{3,})/u)?.[1]?.[0];
+    if (marker === "`" || marker === "~") {
+      fence = fence === marker ? null : fence ?? marker;
+      continue;
+    }
+    const heading = !fence ? line.match(/^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$/u) : null;
+    if (!heading) continue;
+    const level = heading[1]?.length ?? 1;
+    const text = comparableHeading(heading[2] ?? "");
+    const index = rendered.findIndex((item, candidate) => candidate >= cursor && item.level === level && item.text === text);
+    if (index < 0) {
+      fragments.push(undefined);
+      continue;
+    }
+    fragments.push(rendered[index]?.id);
+    cursor = index + 1;
+  }
+  return fragments;
+}
+
+/**
+ * Append a section identifier without replacing an explicit author fragment.
+ *
+ * @param {string} url
+ * @param {string} fragment
+ */
+function sectionUrl(url, fragment) {
+  if (!fragment || url.includes("#")) return url;
+  return `${url}#${encodeURIComponent(fragment)}`;
+}
+
+/**
  * Convert all eligible Markdown pages into deterministic sources and chunks.
  *
  * @param {string} pagesDirectory
- * @param {{baseUrl: string, chunkCharacters: number}} options
+ * @param {{baseUrl: string, chunkCharacters: number, renderedDirectory?: string}} options
  * @returns {Promise<Corpus>}
  */
 export async function buildCorpus(pagesDirectory, options) {
@@ -183,13 +271,23 @@ export async function buildCorpus(pagesDirectory, options) {
     const url = pageUrl(options.baseUrl, relative, metadata);
     const sourceId = stableId(relative.split(path.sep).join("/"));
     sources.push({ id: sourceId, title, url });
-    const pageChunks = chunkMarkdown(parsed.markdown, title, options.chunkCharacters);
+    /** @type {Array<string | undefined>} */
+    let renderedFragments = [];
+    if (options.renderedDirectory) {
+      const renderedFilename = path.join(options.renderedDirectory, relative.replace(/\.md$/iu, ".html"));
+      try {
+        renderedFragments = renderedHeadingFragments(parsed.markdown, await readFile(renderedFilename, "utf8"));
+      } catch (error) {
+        if (/** @type {NodeJS.ErrnoException} */ (error).code !== "ENOENT") throw error;
+      }
+    }
+    const pageChunks = chunkMarkdown(parsed.markdown, title, options.chunkCharacters, renderedFragments);
     pageChunks.forEach((chunk, index) => {
       chunks.push({
         id: `${sourceId}-${String(index + 1).padStart(3, "0")}`,
         sourceId,
         title,
-        url,
+        url: sectionUrl(url, chunk.fragment),
         heading: chunk.heading,
         content: chunk.content
       });

@@ -26,6 +26,33 @@ test("retrieval boosts identifiers and the current page", () => {
 });
 
 test("retrieval enforces the character and result budgets", () => {
-  const selected = retrieveChunks(chunks, "package general", { maxChunks: 1, maxCharacters: 30 });
+  const maxCharacters = 90;
+  const selected = retrieveChunks(chunks, "package general", { maxChunks: 1, maxCharacters });
   assert.equal(selected.length, 1);
+  assert.ok(formatContext(selected).length <= maxCharacters);
+  assert.match(selected[0]?.content ?? "", /…$/u);
+});
+
+test("retrieval does not return an unrelated current page", () => {
+  const selected = retrieveChunks(chunks, "xyzzynotfound", {
+    maxChunks: 2,
+    maxCharacters: 1000,
+    currentUrl: "https://example.test/api.html"
+  });
+  assert.deepEqual(selected, []);
+});
+
+test("retrieval favors build instructions and varied source pages", () => {
+  const pages = [
+    { id: "start", sourceId: "start", title: "Getting Started", heading: "Create a Site", url: "/index.html#create-a-site", content: "Build a site by running ./smgen.sh build after writing Markdown pages." },
+    { id: "deploy", sourceId: "deploy", title: "Deployment", heading: "GitHub Pages", url: "/deployment.html#github-pages", content: "Build and publish the generated site with GitHub Actions." },
+    { id: "more", sourceId: "start", title: "Getting Started", heading: "Requirements", url: "/index.html#requirements", content: "Building needs PHP and Composer." }
+  ];
+  const selected = retrieveChunks(pages, "Walk me through building a site with SMGen", {
+    maxChunks: 3,
+    maxCharacters: 1000,
+    currentUrl: "/index.html"
+  });
+  assert.equal(selected[0]?.id, "start");
+  assert.equal(new Set(selected.map((chunk) => chunk.sourceId)).size, 2);
 });

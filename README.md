@@ -2,7 +2,7 @@
 
 smgen-assistant adds a local AI documentation assistant to an [SMGen](https://github.com/seanmorris/smgen) site. It builds a static search corpus from the site's Markdown and runs [WebLLM](https://github.com/mlc-ai/web-llm) in the visitor's browser.
 
-The initial page loads one small script. The assistant frame, corpus, WebLLM runtime, worker, and model wait until the visitor opens the assistant. The model download requires another explicit click after the interface shows its download and GPU memory estimates.
+The initial page loads one small script. The assistant frame, corpus, WebLLM runtime, worker, and model wait until the visitor opens the assistant. The visitor can type immediately. The first question starts the model download and continues automatically when the model is ready.
 
 ## Requirements
 
@@ -10,7 +10,7 @@ The build requires Node.js 20 or newer. Visitors need a browser with WebGPU. Mod
 
 The default model is `Qwen2.5-Coder-0.5B-Instruct-q4f32_1-MLC`. Its current estimate is a 300 MB download and 1,061 MB of GPU memory. The f32 build works on WebGPU adapters without the optional `shader-f16` feature. The package pins the WebLLM 0.2.79 runtime and `v0_2_48` model library used by the WebLLM Chat example. WebLLM stores model artifacts in IndexedDB to avoid Cache API failures on redirected model shards.
 
-The browser loads a 2,048-token context and limits answers to 384 tokens. The default retrieval and conversation budgets keep the longer documentation prompt from monopolizing the GPU.
+The browser loads a 2,048-token context and reserves 384 tokens for each answer. Before generation, the model's loaded tokenizer verifies that the complete prompt uses no more than 1,664 tokens. The assistant removes old question context, lower-ranked passages, and excess text from the last passage in that order. A question that still does not fit receives an inline validation message without unloading the model.
 
 ## Install
 
@@ -76,7 +76,7 @@ assistantUrl: /handbook/install.html
 ---
 ```
 
-`url` also works as a fallback override. `assistantUrl` takes precedence when both fields exist.
+`url` also works as a fallback override. `assistantUrl` takes precedence when both fields exist. The builder reads heading IDs from generated HTML and adds them to source URLs. An explicit fragment in `assistantUrl` remains unchanged.
 
 ## Configuration
 
@@ -115,13 +115,17 @@ smgen-assistant build [options]
 
 The builder strips YAML frontmatter and splits Markdown at headings. It keeps fenced code blocks intact. Each chunk records a stable source ID, title, heading, and public URL.
 
-The browser ranks chunks with exact phrase, title, heading, technical identifier, body, and current-page matches. Each prompt receives at most `retrieval.maxChunks` chunks and `retrieval.maxCharacters` characters. Source links come from the corpus and render separately from model-generated citation markers.
+The browser ranks chunks with exact phrase, title, heading, technical identifier, body, term rarity, and current-page matches. It favors useful passages from more than one page. Each retrieval receives at most `retrieval.maxChunks` chunks and `retrieval.maxCharacters` formatted characters.
+
+The prompt asks the model to rephrase only the selected passages, preserve commands and configuration values, and cite each paragraph or list item. Citation markers and the folded source list link to the exact documented section. The assistant sends the latest earlier question as optional follow-up context. It never sends prior model answers back to the model.
 
 The browser loads the full corpus when the visitor opens the assistant. A few megabytes of source Markdown fits this design. A corpus measured in tens of megabytes should use a partitioned index so the browser can fetch candidates on demand.
 
 ## Loading and browser isolation
 
 `loader.js` derives its asset path from its own script URL, so root and nested `BASE_URL` deployments use the same output. It creates the iframe only after activation. An open assistant returns after an ordinary static page navigation through tab-scoped state.
+
+Visitors can resize the panel with its upper-left handle or the handle's arrow-key controls. The expand button fills the viewport and restores the previous size. The custom size persists for the assistant path. Small screens always use the available viewport.
 
 The frame registers `service-worker.js` with the `__smgen-assistant/` scope. That scope keeps it separate from a root service worker such as php-wasm's request handler. If the service-worker engine cannot start, the frame retries with a dedicated worker.
 
@@ -131,7 +135,7 @@ The service worker can be terminated by the browser. WebLLM checks the requested
 
 Questions, retrieved documentation, and generated answers stay in the browser. WebLLM downloads model artifacts from the locations in its model configuration. smgen-assistant does not send questions to an application server.
 
-Assistant output supports headings, paragraphs, lists, block quotes, emphasis, code, and links. The renderer creates DOM nodes directly. It treats raw HTML as text and rejects executable URL schemes. The assistant has no tools for network browsing, code execution, or page mutation.
+Assistant output supports headings, paragraphs, lists, block quotes, emphasis, code, and links. The renderer creates DOM nodes directly. It treats raw HTML as text and rejects executable URL schemes. Clicking a source is the only action that changes the host page. The assistant has no tools for network browsing, code execution, or page mutation.
 
 ## Development
 

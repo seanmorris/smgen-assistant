@@ -3,8 +3,48 @@
 /**
  * @typedef {object} MarkdownChunk
  * @property {string} heading
+ * @property {string} fragment
  * @property {string} content
  */
+
+/**
+ * Remove common inline Markdown syntax before deriving a heading identifier.
+ *
+ * @param {string} value
+ */
+function headingText(value) {
+  return value
+    .replace(/\s+\{[^}]*\}\s*$/u, "")
+    .replace(/!?(?:\[([^\]]*)\])\([^)]*\)/gu, "$1")
+    .replace(/<[^>]*>/gu, "")
+    .replace(/[`*_~]/gu, "")
+    .trim();
+}
+
+/**
+ * Derive Pandoc's common automatic heading identifier shape.
+ *
+ * @param {string} value
+ */
+function automaticFragment(value) {
+  const cleaned = headingText(value)
+    .normalize("NFKC")
+    .toLocaleLowerCase("en-US")
+    .replace(/[^\p{L}\p{N}_.\s-]/gu, "")
+    .trim()
+    .replace(/\s+/gu, "-")
+    .replace(/^[^\p{L}]+/u, "");
+  return cleaned || "section";
+}
+
+/**
+ * Read an explicit Markdown heading identifier.
+ *
+ * @param {string} value
+ */
+function explicitFragment(value) {
+  return value.match(/\s+\{[^}]*#([^\s.}]+)[^}]*\}\s*$/u)?.[1] ?? "";
+}
 
 /**
  * Split one section at blank lines outside fenced code blocks.
@@ -51,9 +91,10 @@ function splitSection(lines, maxCharacters) {
  * @param {string} markdown
  * @param {string} pageTitle
  * @param {number} [maxCharacters]
+ * @param {Array<string | undefined>} [renderedFragments]
  * @returns {MarkdownChunk[]}
  */
-export function chunkMarkdown(markdown, pageTitle, maxCharacters = 4000) {
+export function chunkMarkdown(markdown, pageTitle, maxCharacters = 4000, renderedFragments = []) {
   const lines = markdown.replace(/\r\n?/gu, "\n").split("\n");
   /** @type {MarkdownChunk[]} */
   const chunks = [];
@@ -63,12 +104,16 @@ export function chunkMarkdown(markdown, pageTitle, maxCharacters = 4000) {
   let sectionLines = [];
   /** @type {"`" | "~" | null} */
   let fence = null;
+  let fragment = "";
+  let headingIndex = 0;
+  /** @type {Map<string, number>} */
+  const fragmentCounts = new Map();
 
   /** Store the current section as one or more bounded chunks. */
   const flush = () => {
     const heading = headingStack.length ? headingStack.join(" > ") : pageTitle;
     for (const content of splitSection(sectionLines, maxCharacters)) {
-      chunks.push({ heading, content });
+      chunks.push({ heading, fragment, content });
     }
     sectionLines = [];
   };
@@ -84,7 +129,14 @@ export function chunkMarkdown(markdown, pageTitle, maxCharacters = 4000) {
     if (heading) {
       flush();
       const level = heading[1]?.length ?? 1;
-      const text = heading[2]?.trim() ?? pageTitle;
+      const rawText = heading[2]?.trim() ?? pageTitle;
+      const text = headingText(rawText) || pageTitle;
+      const supplied = renderedFragments[headingIndex];
+      const baseFragment = supplied || explicitFragment(rawText) || automaticFragment(text);
+      const count = fragmentCounts.get(baseFragment) ?? 0;
+      fragmentCounts.set(baseFragment, count + 1);
+      fragment = supplied ? supplied : count ? `${baseFragment}-${count}` : baseFragment;
+      headingIndex += 1;
       headingStack.length = level - 1;
       headingStack[level - 1] = text;
       continue;

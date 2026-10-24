@@ -12,7 +12,8 @@ import {
   modelNeedsShaderF16,
   serviceWorkerScriptUrl
 } from "../src/browser/engine-client.mjs";
-import { safeLink } from "../src/browser/render.mjs";
+import { countRuntimePromptTokens } from "../src/browser/prompt-tokens.mjs";
+import { renderMarkdown, safeLink } from "../src/browser/render.mjs";
 import { VERSION } from "../src/shared/version.mjs";
 
 class FakeElement {
@@ -21,19 +22,35 @@ class FakeElement {
     this.tagName = tagName.toUpperCase();
     this.hidden = false;
     this.src = "";
+    this.href = "";
     this.textContent = "";
+    this.className = "";
     this.dataset = {};
+    this.style = {};
+    /** @type {unknown[]} */
+    this.children = [];
+    this.offsetWidth = 400;
+    this.offsetHeight = 624;
     this.attributes = new Map();
     this.contentWindow = { postMessage() {}, focus() {} };
+    this.classList = { toggle() {} };
     /** @type {Map<string, Function>} */
     this.listeners = new Map();
   }
   /** @param {string} name @param {string} value */
   setAttribute(name, value) { this.attributes.set(name, value); }
+  /** @param {...unknown} children */
+  append(...children) { this.children.push(...children); }
+  /** @param {...unknown} children */
+  replaceChildren(...children) { this.children = [...children]; }
   /** @param {string} type @param {Function} listener */
   addEventListener(type, listener) { this.listeners.set(type, listener); }
   /** @param {string} type */
-  dispatch(type) { this.listeners.get(type)?.({ type }); }
+  removeEventListener(type) { this.listeners.delete(type); }
+  /** @param {string} type */
+  dispatch(type) { this.listeners.get(type)?.({ type, currentTarget: this }); }
+  /** @param {number} _pointerId */
+  setPointerCapture(_pointerId) {}
   focus() {}
 }
 
@@ -44,6 +61,7 @@ test("loader does not create or request the iframe before activation", async () 
   const body = { append: (/** @type {FakeElement} */ element) => appended.push(element) };
   const events = new Map();
   const values = new Map();
+  const persistentValues = new Map();
   const context = {
     URL,
     location: { href: "https://example.test/project/page.html" },
@@ -51,15 +69,22 @@ test("loader does not create or request the iframe before activation", async () 
       getItem: (/** @type {string} */ key) => values.get(key) ?? null,
       setItem: (/** @type {string} */ key, /** @type {string} */ value) => values.set(key, value)
     },
+    localStorage: {
+      getItem: (/** @type {string} */ key) => persistentValues.get(key) ?? null,
+      setItem: (/** @type {string} */ key, /** @type {string} */ value) => persistentValues.set(key, value)
+    },
     document: {
       currentScript: { src: "https://example.test/project/__smgen-assistant/loader.js" },
       title: "Page",
       head,
       body,
       querySelector: () => null,
-      createElement: (/** @type {string} */ tag) => new FakeElement(tag)
+      createElement: (/** @type {string} */ tag) => new FakeElement(tag),
+      createTextNode: (/** @type {string} */ value) => ({ tagName: "#TEXT", textContent: value })
     },
     window: {
+      innerWidth: 1280,
+      innerHeight: 800,
       addEventListener: (/** @type {string} */ type, /** @type {Function} */ listener) => events.set(type, listener)
     }
   };
@@ -68,8 +93,12 @@ test("loader does not create or request the iframe before activation", async () 
   assert.deepEqual(appended.map((element) => element.tagName), ["STYLE", "BUTTON"]);
   const button = appended[1];
   button?.dispatch("click");
-  assert.deepEqual(appended.map((element) => element.tagName), ["STYLE", "BUTTON", "IFRAME"]);
-  assert.equal(appended[2]?.src, "https://example.test/project/__smgen-assistant/frame.html");
+  assert.deepEqual(appended.map((element) => element.tagName), ["STYLE", "BUTTON", "DIV"]);
+  const shell = appended[2];
+  const frame = /** @type {FakeElement | undefined} */ (shell?.children[0]);
+  assert.equal(frame?.tagName, "IFRAME");
+  assert.equal(frame?.src, "https://example.test/project/__smgen-assistant/frame.html");
+  assert.equal(persistentValues.has("smgen-assistant:size:/project/__smgen-assistant/"), false);
 });
 
 test("generated Markdown links reject executable schemes", () => {
@@ -77,6 +106,63 @@ test("generated Markdown links reject executable schemes", () => {
   assert.equal(safeLink("data:text/html,test"), null);
   assert.equal(safeLink("https://example.test/docs"), "https://example.test/docs");
   assert.equal(safeLink("/local.html"), "/local.html");
+});
+
+test("documentation citations link to exact source fragments", () => {
+  const container = new FakeElement("article");
+  const doc = /** @type {Document} */ (/** @type {unknown} */ ({
+    createElement: (/** @type {string} */ tag) => new FakeElement(tag),
+    createTextNode: (/** @type {string} */ value) => ({ tagName: "#TEXT", textContent: value })
+  }));
+  renderMarkdown(
+    /** @type {HTMLElement} */ (/** @type {unknown} */ (container)),
+    "Follow the setup steps. [Source 1] [Source 8]",
+    [{ url: "/guide.html#setup" }],
+    doc
+  );
+  const paragraph = /** @type {FakeElement} */ (container.children[0]);
+  const links = /** @type {FakeElement[]} */ (paragraph.children.filter((child) => child instanceof FakeElement && child.tagName === "A"));
+  assert.equal(links[0]?.href, "/guide.html#setup");
+  assert.equal(links.length, 1);
+});
+
+test("assistant messages do not inherit the root grid layout", async () => {
+  const css = await readFile(new URL("../src/styles/assistant.css", import.meta.url), "utf8");
+  assert.match(css, /main\.assistant\s*\{[^}]*display:\s*grid/su);
+  assert.doesNotMatch(css, /(?:^|\})\s*\.assistant\s*\{[^}]*display:\s*grid/su);
+  assert.match(css, /\.message\s*\{[^}]*overflow-wrap:\s*anywhere[^}]*width:\s*fit-content/su);
+  assert.match(css, /\.messages\s*\{[^}]*overflow-x:\s*hidden/su);
+});
+
+test("prompt counting uses the loaded tokenizer and conversation template", () => {
+  class FakeConversation {
+    /** @param {unknown} config */
+    constructor(config) {
+      this.config = /** @type {{system_prefix_token_ids: number[]}} */ (config);
+      this.override_system_message = "";
+      /** @type {string[]} */
+      this.messages = [];
+    }
+    /** @param {string} role @param {string} content */
+    appendMessage(role, content) { this.messages.push(`${role}:${content}`); }
+    /** @param {string} role */
+    appendReplyHeader(role) { this.messages.push(`${role}:`); }
+    /** Return the formatted prompt segments. */
+    getPromptArray() { return [`system:${this.override_system_message}`, ...this.messages]; }
+  }
+  const config = { system_prefix_token_ids: [1, 2] };
+  const runtime = {
+    loadedModelIdToPipeline: new Map([["model", {
+      tokenizer: { encode: (/** @type {string} */ value) => [...value] },
+      getConversationObject: () => new FakeConversation(config)
+    }]])
+  };
+  const messages = [
+    { role: /** @type {const} */ ("system"), content: "rules" },
+    { role: /** @type {const} */ ("user"), content: "question" }
+  ];
+  const formatted = ["system:rules", "user:question", "assistant:"];
+  assert.equal(countRuntimePromptTokens(runtime, messages), 2 + formatted.join("").length);
 });
 
 test("model feature detection distinguishes f16 and f32 shader builds", () => {

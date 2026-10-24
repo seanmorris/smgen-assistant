@@ -5,7 +5,7 @@ import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { buildCorpus, parseFrontmatter } from "../src/cli/corpus.mjs";
+import { buildCorpus, parseFrontmatter, renderedHeadingFragments } from "../src/cli/corpus.mjs";
 import { chunkMarkdown } from "../src/shared/chunk.mjs";
 
 test("frontmatter is removed from model context", () => {
@@ -61,4 +61,32 @@ test("heading chunking does not split a fenced code block", () => {
   assert.equal(codeChunks.length, 1);
   assert.match(codeChunks[0]?.content ?? "", /line 29\n```/u);
   assert.equal(codeChunks[0]?.heading, "API > Example");
+});
+
+test("corpus source URLs target identifiers from generated HTML", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "smgen-assistant-fragments-"));
+  const output = await mkdtemp(path.join(os.tmpdir(), "smgen-assistant-output-"));
+  try {
+    await writeFile(path.join(root, "guide.md"), "# API & Setup\n\nFollow the instructions.\n");
+    await writeFile(path.join(output, "guide.html"), "<main><h1 id=\"api-setup\">API &amp; Setup</h1></main>");
+    const corpus = await buildCorpus(root, { baseUrl: "/manual", chunkCharacters: 4000, renderedDirectory: output });
+    assert.equal(corpus.chunks[0]?.url, "/manual/guide.html#api-setup");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(output, { recursive: true, force: true });
+  }
+});
+
+test("heading fragments honor explicit IDs and remain unique", () => {
+  const chunks = chunkMarkdown("# Same\n\nOne.\n\n# Same\n\nTwo.\n\n## Named {#chosen}\n\nThree.", "Page");
+  assert.deepEqual(chunks.map((chunk) => chunk.fragment), ["same", "same-1", "chosen"]);
+  assert.doesNotMatch(chunks[2]?.heading ?? "", /\{#chosen\}/u);
+});
+
+test("rendered heading matching ignores headings in code fences", () => {
+  const fragments = renderedHeadingFragments(
+    "# Real\n\n```md\n# Not a heading\n```\n\n## Child\n",
+    "<h1 id=\"real\">Real</h1><h2 id=\"child-id\">Child</h2>"
+  );
+  assert.deepEqual(fragments, ["real", "child-id"]);
 });
