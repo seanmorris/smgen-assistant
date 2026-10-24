@@ -15,6 +15,12 @@ test("frontmatter is removed from model context", () => {
   assert.doesNotMatch(result.markdown, /title:/u);
 });
 
+test("frontmatter accepts a closing delimiter at end of file", () => {
+  const result = parseFrontmatter("---\ntitle: Directory\n---", ".fm.yaml");
+  assert.equal(result.attributes.title, "Directory");
+  assert.equal(result.markdown, "");
+});
+
 test("corpus applies inherited metadata and excludes opted-out pages", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "smgen-assistant-corpus-"));
   try {

@@ -29,16 +29,18 @@ function stableId(value) {
 export function parseFrontmatter(source, filename) {
   const normalized = source.replace(/^\uFEFF/u, "").replace(/\r\n?/gu, "\n");
   if (!normalized.startsWith("---\n")) return { attributes: {}, markdown: normalized };
-  const end = normalized.indexOf("\n---\n", 4);
-  if (end < 0) throw new Error(`${filename} has an unclosed frontmatter block`);
-  const raw = normalized.slice(4, end);
+  const closing = /^---[ \t]*$/gmu;
+  closing.lastIndex = 4;
+  const delimiter = closing.exec(normalized);
+  if (!delimiter) throw new Error(`${filename} has an unclosed frontmatter block`);
+  const raw = normalized.slice(4, delimiter.index);
   const parsed = parseYaml(raw);
   if (parsed !== null && (typeof parsed !== "object" || Array.isArray(parsed))) {
     throw new Error(`${filename} frontmatter must be a YAML mapping`);
   }
   return {
     attributes: /** @type {Record<string, unknown>} */ (parsed ?? {}),
-    markdown: normalized.slice(end + 5).replace(/^\n/u, "")
+    markdown: normalized.slice(delimiter.index + delimiter[0].length).replace(/^\n/u, "")
   };
 }
 
