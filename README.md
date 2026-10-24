@@ -96,7 +96,7 @@ retrieval:
   maxCharacters: 12000
 ```
 
-The model ID must exist in the model list included with WebLLM 0.2.86. Models with `f16` in their quantization name require a WebGPU adapter with `shader-f16`. The assistant checks WebLLM's required adapter limits before loading a model. WebGPU does not report available VRAM, so choose a model with a conservative `memoryMB` estimate. The size fields inform the visitor before download; they do not constrain WebLLM.
+The model ID must exist in the model list included with WebLLM 0.2.79. Models with `f16` in their quantization name require a WebGPU adapter with `shader-f16`. The assistant checks WebLLM's required adapter limits before loading a model. WebGPU does not report available VRAM, so choose a model with a conservative `memoryMB` estimate. The size fields inform the visitor before download; they do not constrain WebLLM.
 
 The configuration file can also supply `pages`, `output`, and `baseUrl`. Command flags override file settings. `BASE_URL` from the environment applies when neither the flag nor the file sets it.
 

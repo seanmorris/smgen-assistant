@@ -37,6 +37,7 @@ let corpus = null;
 let config = null;
 /** @type {MLCEngineInterface | null} */
 let engine = null;
+let forceDedicatedWorker = false;
 /** @type {AbortController | null} */
 let generation = null;
 /** @type {{url: string, title: string}} */
@@ -148,6 +149,7 @@ async function enableModel() {
     engine = await module.createAssistantEngine({
       modelId: config.model.id,
       assetBase,
+      forceDedicatedWorker,
       onProgress: (report) => {
         progressElement.value = Math.max(0, Math.min(1, report.progress));
         progressLabel.textContent = report.text;
@@ -156,6 +158,7 @@ async function enableModel() {
     setReady();
   } catch (error) {
     engine = null;
+    forceDedicatedWorker = true;
     enableButton.disabled = false;
     progressElement.hidden = true;
     progressLabel.textContent = error instanceof Error ? error.message : String(error);
@@ -227,7 +230,13 @@ async function askQuestion() {
   } catch (error) {
     assistantMessage.content = assistantMessage.content || `The model stopped with an error: ${error instanceof Error ? error.message : String(error)}`;
     if (!generation.signal.aborted) {
+      const failedEngine = engine;
       engine = null;
+      forceDedicatedWorker = true;
+      if (failedEngine) {
+        const module = await import("./engine-client.mjs");
+        await module.releaseAssistantEngine(failedEngine);
+      }
       consentElement.hidden = false;
       enableButton.disabled = false;
       progressElement.hidden = true;

@@ -9,9 +9,11 @@ import {
   createModelAppConfig,
   isCacheNetworkError,
   loadModelWithRetry,
-  modelNeedsShaderF16
+  modelNeedsShaderF16,
+  serviceWorkerScriptUrl
 } from "../src/browser/engine-client.mjs";
 import { safeLink } from "../src/browser/render.mjs";
+import { VERSION } from "../src/shared/version.mjs";
 
 class FakeElement {
   /** @param {string} tagName */
@@ -137,14 +139,33 @@ test("model loading retries only Cache API network failures", async () => {
 
 test("service worker uses the assistant directory as its scope", async () => {
   const source = await readFile(new URL("../src/browser/engine-client.mjs", import.meta.url), "utf8");
-  assert.match(source, /new URL\("service-worker\.js", options\.assetBase\)\.href/u);
   assert.match(source, /scope: "\.\/"/u);
   assert.match(source, /controller\?\.scriptURL !== scriptUrl/u);
   assert.match(source, /new ServiceWorkerMLCEngine\(engineConfig, 5000\)/u);
+  assert.match(source, /updateViaCache: "none"/u);
+  assert.equal(
+    serviceWorkerScriptUrl(
+      new URL("https://example.test/docs/__smgen-assistant/"),
+      "0.1.7"
+    ),
+    "https://example.test/docs/__smgen-assistant/service-worker.js?version=0.1.7"
+  );
+});
+
+test("browser worker version matches the package release", async () => {
+  const packageMetadata = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  assert.equal(VERSION, packageMetadata.version);
 });
 
 test("service worker takes control without waiting for a page reload", async () => {
   const source = await readFile(new URL("../src/browser/service-worker.mjs", import.meta.url), "utf8");
   assert.match(source, /workerScope\.skipWaiting\(\)/u);
   assert.match(source, /workerScope\.clients\.claim\(\)/u);
+  assert.match(source, /smgen-assistant:check-webgpu/u);
+});
+
+test("a failed service worker engine retries in a dedicated worker", async () => {
+  const source = await readFile(new URL("../src/browser/frame.mjs", import.meta.url), "utf8");
+  assert.match(source, /forceDedicatedWorker = true/u);
+  assert.match(source, /releaseAssistantEngine\(failedEngine\)/u);
 });

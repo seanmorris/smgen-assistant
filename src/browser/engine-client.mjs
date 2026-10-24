@@ -1,6 +1,7 @@
 // @ts-check
 
 import { prebuiltAppConfig, ServiceWorkerMLCEngine, WebWorkerMLCEngine } from "@mlc-ai/web-llm";
+import { VERSION } from "../shared/version.mjs";
 
 /** @typedef {import('@mlc-ai/web-llm').MLCEngineInterface} MLCEngineInterface */
 /** @typedef {import('@mlc-ai/web-llm').InitProgressReport} InitProgressReport */
@@ -31,6 +32,7 @@ async function waitForController(scriptUrl, timeout) {
  * @property {string} modelId
  * @property {URL} assetBase
  * @property {(report: InitProgressReport) => void} onProgress
+ * @property {boolean} [forceDedicatedWorker]
  */
 
 /**
@@ -50,6 +52,55 @@ export function modelNeedsShaderF16(modelId) {
  */
 export function createModelAppConfig() {
   return { ...prebuiltAppConfig, useIndexedDBCache: true };
+}
+
+/**
+ * Build a worker URL tied to the installed assistant release.
+ *
+ * @param {URL} assetBase
+ * @param {string} [version]
+ * @returns {string}
+ */
+export function serviceWorkerScriptUrl(assetBase, version = VERSION) {
+  const scriptUrl = new URL("service-worker.js", assetBase);
+  scriptUrl.searchParams.set("version", version);
+  return scriptUrl.href;
+}
+
+/**
+ * Ask the active assistant worker whether WebGPU is available in its scope.
+ *
+ * @param {number} timeout
+ * @returns {Promise<boolean>}
+ */
+async function serviceWorkerHasWebGpu(timeout) {
+  const controller = navigator.serviceWorker.controller;
+  if (!controller) return false;
+  const requestId = crypto.randomUUID();
+  return new Promise((resolve) => {
+    const timer = window.setTimeout(() => finish(false), timeout);
+    /**
+     * Finish the probe and remove its temporary listener.
+     *
+     * @param {boolean} supported
+     */
+    function finish(supported) {
+      window.clearTimeout(timer);
+      navigator.serviceWorker.removeEventListener("message", receive);
+      resolve(supported);
+    }
+    /**
+     * Accept the matching capability response from the assistant worker.
+     *
+     * @param {MessageEvent} event
+     */
+    function receive(event) {
+      if (event.data?.type !== "smgen-assistant:webgpu-result" || event.data.requestId !== requestId) return;
+      finish(event.data.supported === true);
+    }
+    navigator.serviceWorker.addEventListener("message", receive);
+    controller.postMessage({ type: "smgen-assistant:check-webgpu", requestId });
+  });
 }
 
 /**
@@ -107,6 +158,23 @@ export async function loadModelWithRetry(engine, modelId) {
 }
 
 /**
+ * Release a failed engine and terminate its dedicated worker when present.
+ *
+ * @param {MLCEngineInterface} engine
+ * @returns {Promise<void>}
+ */
+export async function releaseAssistantEngine(engine) {
+  try {
+    await Promise.race([
+      engine.unload(),
+      new Promise((resolve) => window.setTimeout(resolve, 1500))
+    ]);
+  } catch {}
+  const workerEngine = /** @type {MLCEngineInterface & {worker?: {terminate?: () => void}}} */ (engine);
+  workerEngine.worker?.terminate?.();
+}
+
+/**
  * Check the selected adapter before WebLLM compiles the model shaders.
  *
  * @param {string} modelId
@@ -132,27 +200,37 @@ export async function createAssistantEngine(options) {
     appConfig: createModelAppConfig()
   };
   let serviceWorkerReady = false;
-  if ("serviceWorker" in navigator && location.protocol !== "file:") {
+  if (!options.forceDedicatedWorker && "serviceWorker" in navigator && location.protocol !== "file:") {
     try {
-      const scriptUrl = new URL("service-worker.js", options.assetBase).href;
+      const scriptUrl = serviceWorkerScriptUrl(options.assetBase);
       await navigator.serviceWorker.register(scriptUrl, {
         scope: "./",
         type: "module",
-        updateViaCache: "all"
+        updateViaCache: "none"
       });
       await waitForController(scriptUrl, 8000);
-      serviceWorkerReady = true;
+      serviceWorkerReady = await serviceWorkerHasWebGpu(2000);
     } catch (error) {
       console.warn("smgen-assistant: service worker engine unavailable; using a dedicated worker", error);
     }
   }
   if (serviceWorkerReady) {
     const engine = new ServiceWorkerMLCEngine(engineConfig, 5000);
-    return loadModelWithRetry(engine, options.modelId);
+    try {
+      return await loadModelWithRetry(engine, options.modelId);
+    } catch (error) {
+      await releaseAssistantEngine(engine);
+      throw error;
+    }
   }
   const worker = new Worker(new URL("engine-worker.js", options.assetBase), { type: "module", name: "smgen-assistant" });
   const engine = new WebWorkerMLCEngine(worker, engineConfig);
-  return loadModelWithRetry(engine, options.modelId);
+  try {
+    return await loadModelWithRetry(engine, options.modelId);
+  } catch (error) {
+    await releaseAssistantEngine(engine);
+    throw error;
+  }
 }
 
 /**
