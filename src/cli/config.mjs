@@ -133,10 +133,11 @@ export async function parseBuildOptions(argv, environment = process.env, cwd = p
     const flag = argv[index];
     if (!flag?.startsWith("--")) throw new Error(`unexpected argument: ${flag ?? ""}`);
     const value = argv[index + 1];
-    if (!value || value.startsWith("--")) throw new Error(`${flag} requires a value`);
+    if (value === undefined || value.startsWith("--")) throw new Error(`${flag} requires a value`);
     if (!["--pages", "--output", "--base-url", "--config"].includes(flag)) {
       throw new Error(`unknown option: ${flag}`);
     }
+    if (flag !== "--base-url" && !value) throw new Error(`${flag} requires a nonempty value`);
     flags[flag] = value;
     index += 1;
   }

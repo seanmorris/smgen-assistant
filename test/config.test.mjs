@@ -40,3 +40,11 @@ test("command flags override YAML and environment defaults", async () => {
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test("an explicit empty base URL overrides the environment for a root site", async () => {
+  const parsed = await parseBuildOptions([
+    "build", "--pages", "./pages", "--output", "./docs", "--base-url", ""
+  ], { BASE_URL: "/from-env" }, "/project");
+  assert.equal(parsed.help, false);
+  if (!parsed.help) assert.equal(parsed.config.baseUrl, "");
+});
