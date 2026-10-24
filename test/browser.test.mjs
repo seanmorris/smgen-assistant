@@ -84,15 +84,12 @@ test("model feature detection distinguishes f16 and f32 shader builds", () => {
 });
 
 test("model artifacts use large-file storage without Cache.add", () => {
-  const opfs = createModelAppConfig(/** @type {StorageManager} */ ({ getDirectory() {} }));
-  assert.equal(opfs.cacheBackend, "opfs");
-  assert.equal(opfs.opfsAccessMode, "auto");
-  assert.ok(opfs.model_list.length > 0);
-
-  const fallback = createModelAppConfig(undefined);
-  assert.equal(fallback.cacheBackend, "indexeddb");
-  assert.equal(fallback.opfsAccessMode, undefined);
-  assert.equal(fallback.model_list, opfs.model_list);
+  const appConfig = createModelAppConfig();
+  assert.equal(appConfig.useIndexedDBCache, true);
+  const model = appConfig.model_list.find((/** @type {import('@mlc-ai/web-llm').ModelRecord} */ record) => (
+    record.model_id === "Qwen2.5-Coder-0.5B-Instruct-q0f32-MLC"
+  ));
+  assert.match(model?.model_lib ?? "", /\/v0_2_48\/Qwen2-0\.5B-Instruct-q0f32/u);
 });
 
 test("adapter checks reject unsupported WebLLM limits before model loading", () => {

@@ -44,16 +44,12 @@ export function modelNeedsShaderF16(modelId) {
 }
 
 /**
- * Build WebLLM's model configuration with a large-file storage backend.
+ * Build WebLLM's model configuration with IndexedDB artifact storage.
  *
- * @param {StorageManager | undefined} storage
  * @returns {import('@mlc-ai/web-llm').AppConfig}
  */
-export function createModelAppConfig(storage) {
-  if (typeof storage?.getDirectory === "function") {
-    return { ...prebuiltAppConfig, cacheBackend: "opfs", opfsAccessMode: "auto" };
-  }
-  return { ...prebuiltAppConfig, cacheBackend: "indexeddb" };
+export function createModelAppConfig() {
+  return { ...prebuiltAppConfig, useIndexedDBCache: true };
 }
 
 /**
@@ -133,7 +129,7 @@ export async function createAssistantEngine(options) {
   await checkModelSupport(options.modelId);
   const engineConfig = {
     initProgressCallback: options.onProgress,
-    appConfig: createModelAppConfig(navigator.storage)
+    appConfig: createModelAppConfig()
   };
   let serviceWorkerReady = false;
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
