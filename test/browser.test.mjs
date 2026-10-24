@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 import test from "node:test";
+import { modelNeedsShaderF16 } from "../src/browser/engine-client.mjs";
 import { safeLink } from "../src/browser/render.mjs";
 
 class FakeElement {
@@ -68,6 +69,12 @@ test("generated Markdown links reject executable schemes", () => {
   assert.equal(safeLink("data:text/html,test"), null);
   assert.equal(safeLink("https://example.test/docs"), "https://example.test/docs");
   assert.equal(safeLink("/local.html"), "/local.html");
+});
+
+test("model feature detection distinguishes f16 and f32 shader builds", () => {
+  assert.equal(modelNeedsShaderF16("Qwen2.5-0.5B-Instruct-q4f16_1-MLC"), true);
+  assert.equal(modelNeedsShaderF16("Qwen2.5-0.5B-Instruct-q0f16-MLC"), true);
+  assert.equal(modelNeedsShaderF16("Qwen2.5-0.5B-Instruct-q4f32_1-MLC"), false);
 });
 
 test("service worker uses the assistant directory as its scope", async () => {

@@ -34,13 +34,37 @@ async function waitForController(scriptUrl, timeout) {
  */
 
 /**
+ * Report whether a WebLLM model name selects half-precision shaders.
+ *
+ * @param {string} modelId
+ * @returns {boolean}
+ */
+export function modelNeedsShaderF16(modelId) {
+  return /-q\d+f16(?:_|-|$)/iu.test(modelId);
+}
+
+/**
+ * Check the selected adapter before WebLLM compiles the model shaders.
+ *
+ * @param {string} modelId
+ */
+async function checkModelSupport(modelId) {
+  if (!("gpu" in navigator)) throw new Error("This browser does not provide WebGPU.");
+  const adapter = await navigator.gpu.requestAdapter();
+  if (!adapter) throw new Error("This browser could not find a WebGPU adapter.");
+  if (modelNeedsShaderF16(modelId) && !adapter.features.has("shader-f16")) {
+    throw new Error("This model requires WebGPU shader-f16 support. Select a q4f32 model for this device.");
+  }
+}
+
+/**
  * Start WebLLM in the scoped service worker or a dedicated worker fallback.
  *
  * @param {EngineOptions} options
  * @returns {Promise<MLCEngineInterface>}
  */
 export async function createAssistantEngine(options) {
-  if (!("gpu" in navigator)) throw new Error("This browser does not provide WebGPU.");
+  await checkModelSupport(options.modelId);
   const engineConfig = { initProgressCallback: options.onProgress };
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
     try {
