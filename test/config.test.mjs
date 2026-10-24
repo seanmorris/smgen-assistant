@@ -7,10 +7,10 @@ import path from "node:path";
 import test from "node:test";
 import { DEFAULT_CONFIG, normalizeBaseUrl, parseBuildOptions } from "../src/cli/config.mjs";
 
-test("the default model has a conservative WebGPU memory requirement", () => {
-  assert.equal(DEFAULT_CONFIG.model.id, "SmolLM2-360M-Instruct-q4f32_1-MLC");
-  assert.equal(DEFAULT_CONFIG.model.downloadMB, 207);
-  assert.equal(DEFAULT_CONFIG.model.memoryMB, 580);
+test("the default model matches the documented Qwen build", () => {
+  assert.equal(DEFAULT_CONFIG.model.id, "Qwen2.5-Coder-0.5B-Instruct-q0f32-MLC");
+  assert.equal(DEFAULT_CONFIG.model.downloadMB, 1000);
+  assert.equal(DEFAULT_CONFIG.model.memoryMB, 2655);
 });
 
 test("normalizeBaseUrl accepts empty and nested site paths", () => {
