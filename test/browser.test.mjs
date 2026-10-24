@@ -6,6 +6,7 @@ import vm from "node:vm";
 import test from "node:test";
 import {
   adapterCompatibilityIssue,
+  createModelAppConfig,
   isCacheNetworkError,
   loadModelWithRetry,
   modelNeedsShaderF16
@@ -80,6 +81,18 @@ test("model feature detection distinguishes f16 and f32 shader builds", () => {
   assert.equal(modelNeedsShaderF16("Qwen2.5-0.5B-Instruct-q4f16_1-MLC"), true);
   assert.equal(modelNeedsShaderF16("Qwen2.5-0.5B-Instruct-q0f16-MLC"), true);
   assert.equal(modelNeedsShaderF16("Qwen2.5-0.5B-Instruct-q4f32_1-MLC"), false);
+});
+
+test("model artifacts use large-file storage without Cache.add", () => {
+  const opfs = createModelAppConfig(/** @type {StorageManager} */ ({ getDirectory() {} }));
+  assert.equal(opfs.cacheBackend, "opfs");
+  assert.equal(opfs.opfsAccessMode, "auto");
+  assert.ok(opfs.model_list.length > 0);
+
+  const fallback = createModelAppConfig(undefined);
+  assert.equal(fallback.cacheBackend, "indexeddb");
+  assert.equal(fallback.opfsAccessMode, undefined);
+  assert.equal(fallback.model_list, opfs.model_list);
 });
 
 test("adapter checks reject unsupported WebLLM limits before model loading", () => {

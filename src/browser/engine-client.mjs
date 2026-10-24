@@ -1,6 +1,6 @@
 // @ts-check
 
-import { ServiceWorkerMLCEngine, WebWorkerMLCEngine } from "@mlc-ai/web-llm";
+import { prebuiltAppConfig, ServiceWorkerMLCEngine, WebWorkerMLCEngine } from "@mlc-ai/web-llm";
 
 /** @typedef {import('@mlc-ai/web-llm').MLCEngineInterface} MLCEngineInterface */
 /** @typedef {import('@mlc-ai/web-llm').InitProgressReport} InitProgressReport */
@@ -41,6 +41,19 @@ async function waitForController(scriptUrl, timeout) {
  */
 export function modelNeedsShaderF16(modelId) {
   return /-q\d+f16(?:_|-|$)/iu.test(modelId);
+}
+
+/**
+ * Build WebLLM's model configuration with a large-file storage backend.
+ *
+ * @param {StorageManager | undefined} storage
+ * @returns {import('@mlc-ai/web-llm').AppConfig}
+ */
+export function createModelAppConfig(storage) {
+  if (typeof storage?.getDirectory === "function") {
+    return { ...prebuiltAppConfig, cacheBackend: "opfs", opfsAccessMode: "auto" };
+  }
+  return { ...prebuiltAppConfig, cacheBackend: "indexeddb" };
 }
 
 /**
@@ -118,7 +131,10 @@ async function checkModelSupport(modelId) {
  */
 export async function createAssistantEngine(options) {
   await checkModelSupport(options.modelId);
-  const engineConfig = { initProgressCallback: options.onProgress };
+  const engineConfig = {
+    initProgressCallback: options.onProgress,
+    appConfig: createModelAppConfig(navigator.storage)
+  };
   let serviceWorkerReady = false;
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
     try {

@@ -8,7 +8,7 @@ The initial page loads one small script. The assistant frame, corpus, WebLLM run
 
 The build requires Node.js 20 or newer. Visitors need a browser with WebGPU. Model loading also requires HTTPS or localhost when the browser uses the service-worker engine.
 
-The default model is `Qwen2.5-Coder-0.5B-Instruct-q0f32-MLC`. Its current estimate is a 1,000 MB download and 2,655 MB of GPU memory. The f32 build works on WebGPU adapters without the optional `shader-f16` feature. WebLLM caches downloaded model artifacts in the browser. A transient Cache API network failure is retried once, resuming the cached shards.
+The default model is `Qwen2.5-Coder-0.5B-Instruct-q0f32-MLC`. Its current estimate is a 1,000 MB download and 2,655 MB of GPU memory. The f32 build works on WebGPU adapters without the optional `shader-f16` feature. WebLLM stores downloaded model artifacts in the browser's origin private file system. Browsers without OPFS use IndexedDB. Both paths avoid Cache API failures on redirected model shards.
 
 ## Install
 
@@ -123,7 +123,7 @@ The browser loads the full corpus when the visitor opens the assistant. A few me
 
 The frame registers `service-worker.js` with the `__smgen-assistant/` scope. That scope keeps it separate from a root service worker such as php-wasm's request handler. If the service-worker engine cannot start, the frame retries with a dedicated worker.
 
-The service worker can be terminated by the browser. WebLLM checks the requested model when a new client reconnects and reloads it from the browser cache when required.
+The service worker can be terminated by the browser. WebLLM checks the requested model when a new client reconnects and reloads it from browser storage when required.
 
 ## Privacy and output safety
 
