@@ -8,7 +8,7 @@ The initial page loads one small script. The assistant frame, corpus, WebLLM run
 
 The build requires Node.js 20 or newer. Visitors need a browser with WebGPU. Model loading also requires HTTPS or localhost when the browser uses the service-worker engine.
 
-The default model is `Qwen2.5-Coder-0.5B-Instruct-q0f32-MLC`. Its current estimate is a 1,000 MB download and 2,655 MB of GPU memory. The f32 build works on WebGPU adapters without the optional `shader-f16` feature. WebLLM caches downloaded model artifacts in the browser.
+The default model is `Qwen2.5-Coder-0.5B-Instruct-q0f32-MLC`. Its current estimate is a 1,000 MB download and 2,655 MB of GPU memory. The f32 build works on WebGPU adapters without the optional `shader-f16` feature. WebLLM caches downloaded model artifacts in the browser. A transient Cache API network failure is retried once, resuming the cached shards.
 
 ## Install
 

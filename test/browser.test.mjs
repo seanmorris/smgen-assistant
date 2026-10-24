@@ -4,7 +4,12 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 import test from "node:test";
-import { adapterCompatibilityIssue, modelNeedsShaderF16 } from "../src/browser/engine-client.mjs";
+import {
+  adapterCompatibilityIssue,
+  isCacheNetworkError,
+  loadModelWithRetry,
+  modelNeedsShaderF16
+} from "../src/browser/engine-client.mjs";
 import { safeLink } from "../src/browser/render.mjs";
 
 class FakeElement {
@@ -97,12 +102,35 @@ test("adapter checks reject unsupported WebLLM limits before model loading", () 
   assert.match(adapterCompatibilityIssue(constrained, "model-q4f32_1") ?? "", /maximum buffer size/u);
 });
 
+test("model loading retries only Cache API network failures", async () => {
+  let attempts = 0;
+  const retryingEngine = /** @type {import('@mlc-ai/web-llm').MLCEngineInterface} */ (/** @type {unknown} */ ({
+    reload: async () => {
+      attempts += 1;
+      if (attempts === 1) throw new DOMException("Cache.add() encountered a network error", "NetworkError");
+    }
+  }));
+  assert.equal(isCacheNetworkError(new DOMException("Cache.add() encountered a network error", "NetworkError")), true);
+  await loadModelWithRetry(retryingEngine, "model-q0f32");
+  assert.equal(attempts, 2);
+
+  attempts = 0;
+  const failingEngine = /** @type {import('@mlc-ai/web-llm').MLCEngineInterface} */ (/** @type {unknown} */ ({
+    reload: async () => {
+      attempts += 1;
+      throw new Error("Device was lost");
+    }
+  }));
+  await assert.rejects(loadModelWithRetry(failingEngine, "model-q0f32"), /Device was lost/u);
+  assert.equal(attempts, 1);
+});
+
 test("service worker uses the assistant directory as its scope", async () => {
   const source = await readFile(new URL("../src/browser/engine-client.mjs", import.meta.url), "utf8");
   assert.match(source, /new URL\("service-worker\.js", options\.assetBase\)\.href/u);
   assert.match(source, /scope: "\.\/"/u);
   assert.match(source, /controller\?\.scriptURL !== scriptUrl/u);
-  assert.match(source, /if \(serviceWorkerReady\) return CreateServiceWorkerMLCEngine/u);
+  assert.match(source, /new ServiceWorkerMLCEngine\(engineConfig, 5000\)/u);
 });
 
 test("service worker takes control without waiting for a page reload", async () => {

@@ -1,6 +1,6 @@
 // @ts-check
 
-import { CreateServiceWorkerMLCEngine, CreateWebWorkerMLCEngine } from "@mlc-ai/web-llm";
+import { ServiceWorkerMLCEngine, WebWorkerMLCEngine } from "@mlc-ai/web-llm";
 
 /** @typedef {import('@mlc-ai/web-llm').MLCEngineInterface} MLCEngineInterface */
 /** @typedef {import('@mlc-ai/web-llm').InitProgressReport} InitProgressReport */
@@ -70,6 +70,34 @@ export function adapterCompatibilityIssue(adapter, modelId) {
 }
 
 /**
+ * Report whether a model load failed during a Cache API network request.
+ *
+ * @param {unknown} error
+ * @returns {boolean}
+ */
+export function isCacheNetworkError(error) {
+  const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  return /(?:NetworkError.*Cache\.add|Cache\.add.*network error)/iu.test(message);
+}
+
+/**
+ * Load a model and resume once after a transient Cache API network failure.
+ *
+ * @param {MLCEngineInterface} engine
+ * @param {string} modelId
+ * @returns {Promise<MLCEngineInterface>}
+ */
+export async function loadModelWithRetry(engine, modelId) {
+  try {
+    await engine.reload(modelId);
+  } catch (error) {
+    if (!isCacheNetworkError(error)) throw error;
+    await engine.reload(modelId);
+  }
+  return engine;
+}
+
+/**
  * Check the selected adapter before WebLLM compiles the model shaders.
  *
  * @param {string} modelId
@@ -106,9 +134,13 @@ export async function createAssistantEngine(options) {
       console.warn("smgen-assistant: service worker engine unavailable; using a dedicated worker", error);
     }
   }
-  if (serviceWorkerReady) return CreateServiceWorkerMLCEngine(options.modelId, engineConfig);
+  if (serviceWorkerReady) {
+    const engine = new ServiceWorkerMLCEngine(engineConfig, 5000);
+    return loadModelWithRetry(engine, options.modelId);
+  }
   const worker = new Worker(new URL("engine-worker.js", options.assetBase), { type: "module", name: "smgen-assistant" });
-  return CreateWebWorkerMLCEngine(worker, options.modelId, engineConfig);
+  const engine = new WebWorkerMLCEngine(worker, engineConfig);
+  return loadModelWithRetry(engine, options.modelId);
 }
 
 /**
