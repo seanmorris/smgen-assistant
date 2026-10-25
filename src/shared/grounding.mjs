@@ -3,7 +3,7 @@
 /** @typedef {import('./types.mjs').CorpusChunk} CorpusChunk */
 
 const LOW_VALUE_WORDS = new Set([
-  "about", "after", "also", "and", "are", "before", "can", "each", "for", "from", "into", "its", "need", "only", "that", "the", "then", "this", "through", "using", "with", "your"
+  "about", "after", "also", "and", "are", "before", "can", "each", "for", "from", "into", "its", "need", "only", "running", "that", "the", "then", "this", "through", "using", "with", "your"
 ]);
 const GROUNDED_EQUIVALENTS = new Map([
   ["create", ["initialize"]],
@@ -38,6 +38,34 @@ function proseBlocks(answer) {
     const listItems = lines.filter((line) => /^\s*(?:[-*+]|\d+\.)\s+/u.test(line));
     return listItems.length ? listItems : [paragraph];
   }).map((block) => block.trim()).filter((block) => block && !/^#{1,6}\s/u.test(block));
+}
+
+/**
+ * Build a short answer from exact prose in the strongest retrieved passage.
+ *
+ * @param {CorpusChunk} source
+ */
+export function formatExtractiveAnswer(source) {
+  const prose = source.content.replace(/^\s*(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\s*\1\s*$/gmu, "");
+  const candidates = prose.split(/\n\s*\n/gu).flatMap((paragraph) => {
+    const lines = paragraph.split("\n").map((line) => line.trim()).filter(Boolean);
+    const list = lines.filter((line) => /^(?:[-*+]|\d+\.)\s+/u.test(line));
+    const blocks = list.length === lines.length ? list : [lines.join(" ")];
+    return blocks.flatMap((block) => {
+      const cleaned = block.replace(/^(?:[-*+]|\d+\.)\s+/u, "").trim();
+      if (cleaned.length <= 180) return [cleaned];
+      return cleaned.match(/[^.!?]+[.!?](?:\s|$)/gu)?.map((sentence) => sentence.trim()) ?? [];
+    });
+  }).filter((block) => block && block.length <= 180 && !/^#{1,6}\s/u.test(block));
+  /** @type {string[]} */
+  const selected = [];
+  let characters = 0;
+  for (const block of candidates) {
+    if (selected.length >= 4 || characters + block.length > 420) break;
+    selected.push(block);
+    characters += block.length;
+  }
+  return selected.map((block) => `- ${block} [Source 1]`).join("\n");
 }
 
 /**
@@ -139,7 +167,7 @@ export function validateGroundedAnswer(answer, sources, finishReason) {
  * @param {string} answer
  * @param {CorpusChunk[]} sources
  * @param {string | null} finishReason
- * @returns {{ok: true, answer: string, sources: CorpusChunk[]} | {ok: false, reason: string, unsupported?: string[]}}
+ * @returns {{ok: true, answer: string, sources: CorpusChunk[], filtered: boolean} | {ok: false, reason: string, unsupported?: string[]}}
  */
 export function formatGroundedAnswer(answer, sources, finishReason) {
   if (finishReason === "length") return { ok: false, reason: "truncated" };
@@ -153,7 +181,7 @@ export function formatGroundedAnswer(answer, sources, finishReason) {
   if (!parsed || typeof parsed !== "object" || !("items" in parsed) || !Array.isArray(parsed.items)) {
     return { ok: false, reason: "invalid-shape" };
   }
-  if (parsed.items.length < 1 || parsed.items.length > 4) return { ok: false, reason: "invalid-shape" };
+  if (parsed.items.length < 1 || parsed.items.length > 2) return { ok: false, reason: "invalid-shape" };
   /** @type {Array<{content: string, source: number}>} */
   const items = [];
   for (const item of parsed.items) {
@@ -165,7 +193,7 @@ export function formatGroundedAnswer(answer, sources, finishReason) {
     }
     let source = Number(item.source);
     const content = item.text.trim().replace(/\s+/gu, " ").replace(/^(?:[-*+]|\d+\.)\s+/u, "");
-    if (!content || content.length > 180 || /(?:`{3,}|~{3,}|\[Source \d+\])/u.test(content) || source < 1 || source > sources.length) {
+    if (!content || content.length > 140 || /(?:`{3,}|~{3,}|\[Source \d+\])/u.test(content) || source < 1 || source > sources.length) {
       return { ok: false, reason: "invalid-shape" };
     }
     const literals = technicalLiterals(content);
@@ -184,10 +212,12 @@ export function formatGroundedAnswer(answer, sources, finishReason) {
       items.push({ content, source });
     }
   }
-  if (items.length < Math.min(2, parsed.items.length)) return { ok: false, reason: "unsupported-content" };
+  if (!items.length) return { ok: false, reason: "unsupported-content" };
   const sourceNumbers = [...new Set(items.map((item) => item.source))];
   const selectedSources = sourceNumbers.map((number) => sources[number - 1]).filter((source) => source !== undefined);
   const markdown = items.map((item) => `- ${item.content} [Source ${sourceNumbers.indexOf(item.source) + 1}]`).join("\n");
   const grounding = validateGroundedAnswer(markdown, selectedSources, finishReason);
-  return grounding.ok ? { ok: true, answer: markdown, sources: selectedSources } : grounding;
+  return grounding.ok
+    ? { ok: true, answer: markdown, sources: selectedSources, filtered: items.length < parsed.items.length }
+    : grounding;
 }

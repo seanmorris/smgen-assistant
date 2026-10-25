@@ -9,6 +9,7 @@ import {
   createModelAppConfig,
   isCacheNetworkError,
   loadModelWithRetry,
+  MAX_RESPONSE_CHARACTERS,
   modelNeedsShaderF16,
   serviceWorkerScriptUrl,
   streamAnswer
@@ -258,7 +259,29 @@ test("answer streaming reports truncation and discourages repetition", async () 
   assert.equal(request?.repetition_penalty, 1.1);
   assert.equal(request?.frequency_penalty, 0.5);
   assert.equal(/** @type {{type?: string}} */ (request?.response_format).type, "json_object");
-  assert.match(/** @type {{schema?: string}} */ (request?.response_format).schema ?? "", /"maxItems":4/u);
+  assert.match(/** @type {{schema?: string}} */ (request?.response_format).schema ?? "", /"maxItems":2/u);
+  assert.match(/** @type {{schema?: string}} */ (request?.response_format).schema ?? "", /"maxLength":140/u);
+});
+
+test("answer streaming interrupts output too large to pass validation", async () => {
+  let interrupted = false;
+  const engine = /** @type {import('@mlc-ai/web-llm').MLCEngineInterface} */ (/** @type {unknown} */ ({
+    interruptGenerate() { interrupted = true; },
+    chat: { completions: { create: async () => (async function* chunks() {
+      yield { choices: [{ delta: { content: "x".repeat(MAX_RESPONSE_CHARACTERS + 20) }, finish_reason: null }] };
+      yield { choices: [{ delta: { content: "unreachable" }, finish_reason: "stop" }] };
+    })() } }
+  }));
+  let text = "";
+  const finishReason = await streamAnswer(
+    engine,
+    [{ role: "user", content: "Question" }],
+    (part) => { text += part; },
+    new AbortController().signal
+  );
+  assert.equal(interrupted, true);
+  assert.equal(text.length, MAX_RESPONSE_CHARACTERS);
+  assert.equal(finishReason, "length");
 });
 
 test("service worker uses the assistant directory as its scope", async () => {

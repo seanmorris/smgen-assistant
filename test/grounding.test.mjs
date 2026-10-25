@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatGroundedAnswer, validateGroundedAnswer } from "../src/shared/grounding.mjs";
+import { formatExtractiveAnswer, formatGroundedAnswer, validateGroundedAnswer } from "../src/shared/grounding.mjs";
 
 const sources = [{
   id: "1",
@@ -47,7 +47,8 @@ test("structured answers become concise cited Markdown", () => {
   assert.deepEqual(formatGroundedAnswer(answer, sources, "stop"), {
     ok: true,
     answer: "- Run `smgen init`. [Source 1]\n- Replace `pages/index.md`. [Source 1]",
-    sources
+    sources,
+    filtered: false
   });
 });
 
@@ -68,15 +69,56 @@ test("structured answers derive citations from exact technical literals", () => 
   assert.deepEqual(formatGroundedAnswer(answer, [primary, other], "stop"), {
     ok: true,
     answer: "- Run `smgen init`. [Source 1]",
-    sources: [primary]
+    sources: [primary],
+    filtered: false
   });
 });
 
-test("structured answers fail closed when most items are unsupported", () => {
+test("structured answers retain supported items when other items are unsupported", () => {
   const answer = JSON.stringify({ items: [
     { text: "Run `smgen init`.", source: 1 },
+    { text: "Create templates and assets.", source: 1 }
+  ] });
+  assert.deepEqual(formatGroundedAnswer(answer, sources, "stop"), {
+    ok: true,
+    answer: "- Run `smgen init`. [Source 1]",
+    sources,
+    filtered: true
+  });
+});
+
+test("structured answers fail closed when every item is unsupported", () => {
+  const answer = JSON.stringify({ items: [
     { text: "Create templates and assets.", source: 1 },
     { text: "Install Bootstrap.", source: 1 }
   ] });
   assert.deepEqual(formatGroundedAnswer(answer, sources, "stop"), { ok: false, reason: "unsupported-content" });
+});
+
+test("structured answers allow connective wording around an exact command", () => {
+  const baseSource = sources[0];
+  assert.ok(baseSource);
+  const commandSource = { ...baseSource, content: "Initialize an empty directory:\n\n`smgen init`" };
+  const answer = JSON.stringify({ items: [{ text: "Initialize an empty directory by running `smgen init`.", source: 1 }] });
+  assert.deepEqual(formatGroundedAnswer(answer, [commandSource], "stop"), {
+    ok: true,
+    answer: "- Initialize an empty directory by running `smgen init`. [Source 1]",
+    sources: [commandSource],
+    filtered: false
+  });
+});
+
+test("extractive fallback keeps concise prose and omits code blocks", () => {
+  const baseSource = sources[0];
+  assert.ok(baseSource);
+  const source = {
+    ...baseSource,
+    content: "Initialize an empty directory:\n\n```bash\nmkdir my-site\ncd my-site\n```\n\nSet the site identity in `.smgen-rc`:\n\nBuild and serve the site."
+  };
+  assert.equal(formatExtractiveAnswer(source), [
+    "- Initialize an empty directory: [Source 1]",
+    "- Set the site identity in `.smgen-rc`: [Source 1]",
+    "- Build and serve the site. [Source 1]"
+  ].join("\n"));
+  assert.deepEqual(validateGroundedAnswer(formatExtractiveAnswer(source), [source], "stop"), { ok: true });
 });

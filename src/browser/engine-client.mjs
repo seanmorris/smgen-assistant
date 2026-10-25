@@ -3,6 +3,8 @@
 import { prebuiltAppConfig, ServiceWorkerMLCEngine, WebWorkerMLCEngine } from "@mlc-ai/web-llm";
 import { VERSION } from "../shared/version.mjs";
 
+export const MAX_RESPONSE_CHARACTERS = 420;
+
 /** @typedef {import('@mlc-ai/web-llm').MLCEngineInterface} MLCEngineInterface */
 /** @typedef {import('@mlc-ai/web-llm').InitProgressReport} InitProgressReport */
 
@@ -284,6 +286,7 @@ export async function streamAnswer(engine, messages, onText, signal) {
   const stop = () => { void engine.interruptGenerate(); };
   signal.addEventListener("abort", stop, { once: true });
   let finishReason = null;
+  let generatedCharacters = 0;
   try {
     const response = await engine.chat.completions.create({
       messages,
@@ -300,11 +303,11 @@ export async function streamAnswer(engine, messages, onText, signal) {
             items: {
               type: "array",
               minItems: 1,
-              maxItems: 4,
+              maxItems: 2,
               items: {
                 type: "object",
                 properties: {
-                  text: { type: "string", maxLength: 180 },
+                  text: { type: "string", maxLength: 140 },
                   source: { type: "integer", minimum: 1, maximum: 4 }
                 },
                 required: ["text", "source"],
@@ -321,7 +324,15 @@ export async function streamAnswer(engine, messages, onText, signal) {
       if (signal.aborted) break;
       const choice = chunk.choices[0];
       const text = choice?.delta.content;
-      if (text) onText(text);
+      if (text) {
+        const remaining = MAX_RESPONSE_CHARACTERS - generatedCharacters;
+        if (remaining > 0) onText(text.slice(0, remaining));
+        generatedCharacters += text.length;
+        if (generatedCharacters > MAX_RESPONSE_CHARACTERS) {
+          await engine.interruptGenerate();
+          return "length";
+        }
+      }
       if (choice?.finish_reason) finishReason = choice.finish_reason;
     }
     return finishReason;

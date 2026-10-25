@@ -1,7 +1,7 @@
 // @ts-check
 
 import { retrieveChunks } from "../shared/retrieval.mjs";
-import { formatGroundedAnswer } from "../shared/grounding.mjs";
+import { formatExtractiveAnswer, formatGroundedAnswer } from "../shared/grounding.mjs";
 import { fitPrompt, MAX_QUESTION_CHARACTERS } from "../shared/prompt.mjs";
 import { renderMarkdown } from "./render.mjs";
 
@@ -350,14 +350,16 @@ async function askQuestion(suppliedQuestion) {
     if (!grounding.ok) {
       console.warn("smgen-assistant: rejected ungrounded answer", grounding);
       const best = fitted.sources[0];
-      assistantMessage.content = best
-        ? `I could not verify a grounded summary. Open **${best.heading || best.title}** for the closest documented answer. [Source 1]`
-        : "I could not verify a grounded answer from the selected documentation.";
+      const extracted = best ? formatExtractiveAnswer(best) : "";
+      assistantMessage.content = extracted || (best
+        ? `See **${best.heading || best.title}** for the closest matching documentation. [Source 1]`
+        : "Try a more specific term from the documentation.");
       assistantMessage.sources = best ? sourceLinks([best]) : [];
       if (best) assistantMessage.excerpt = best.content;
     } else {
       assistantMessage.content = grounding.answer;
       assistantMessage.sources = sourceLinks(grounding.sources);
+      if (grounding.filtered && fitted.sources[0]) assistantMessage.excerpt = fitted.sources[0].content;
     }
     article.className = "message assistant";
     renderAssistantMessage(article, assistantMessage);
