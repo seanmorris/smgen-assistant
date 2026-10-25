@@ -3,7 +3,7 @@
 import { prebuiltAppConfig, ServiceWorkerMLCEngine, WebWorkerMLCEngine } from "@mlc-ai/web-llm";
 import { VERSION } from "../shared/version.mjs";
 
-export const MAX_RESPONSE_CHARACTERS = 420;
+export const MAX_RESPONSE_CHARACTERS = 560;
 
 /** @typedef {import('@mlc-ai/web-llm').MLCEngineInterface} MLCEngineInterface */
 /** @typedef {import('@mlc-ai/web-llm').InitProgressReport} InitProgressReport */
@@ -303,7 +303,7 @@ export async function streamAnswer(engine, messages, onText, signal) {
             items: {
               type: "array",
               minItems: 1,
-              maxItems: 2,
+              maxItems: 3,
               items: {
                 type: "object",
                 properties: {

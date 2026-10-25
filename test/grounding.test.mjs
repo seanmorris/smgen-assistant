@@ -108,7 +108,7 @@ test("structured answers allow connective wording around an exact command", () =
   });
 });
 
-test("extractive fallback keeps concise prose and omits code blocks", () => {
+test("extractive fallback adds short command blocks to concise prose", () => {
   const baseSource = sources[0];
   assert.ok(baseSource);
   const source = {
@@ -116,7 +116,7 @@ test("extractive fallback keeps concise prose and omits code blocks", () => {
     content: "Initialize an empty directory:\n\n```bash\nmkdir my-site\ncd my-site\n```\n\nSet the site identity in `.smgen-rc`:\n\nBuild and serve the site."
   };
   assert.equal(formatExtractiveAnswer(source), [
-    "- Initialize an empty directory: [Source 1]",
+    "- Initialize an empty directory: `mkdir my-site`, `cd my-site` [Source 1]",
     "- Set the site identity in `.smgen-rc`: [Source 1]",
     "- Build and serve the site. [Source 1]"
   ].join("\n"));

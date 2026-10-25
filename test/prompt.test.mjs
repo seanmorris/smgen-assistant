@@ -24,7 +24,7 @@ test("prompt instructions require faithful cited paraphrases", () => {
   assert.match(messages[0]?.content ?? "", /Copy commands, filenames, configuration keys/iu);
   assert.match(messages[0]?.content ?? "", /Prefer earlier sources/iu);
   assert.match(messages.at(-1)?.content ?? "", /Return a JSON object with an "items" array/iu);
-  assert.match(messages.at(-1)?.content ?? "", /Return one or two items and no more than 36 words total/iu);
+  assert.match(messages.at(-1)?.content ?? "", /Return two or three items and no more than 54 words total/iu);
   assert.match(messages.at(-1)?.content ?? "", /Never put a list, newline, heading, example, or code fence inside text/iu);
   assert.match(messages.at(-1)?.content ?? "", /Do not infer a step, prerequisite, or purpose/iu);
   assert.match(messages.at(-1)?.content ?? "", /^Question: How do I build\?/u);

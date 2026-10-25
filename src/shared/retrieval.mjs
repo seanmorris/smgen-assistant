@@ -7,6 +7,7 @@ const LOW_VALUE_TERMS = new Set([
   "a", "an", "and", "are", "do", "does", "explain", "for", "how", "i", "in", "is", "it", "me", "of", "on", "smgen", "tell", "the", "this", "through", "to", "use", "walk", "what", "with", "you", "your"
 ]);
 const RELATED_TERMS = new Map([
+  ["does", ["converts", "coordinates", "renders"]],
   ["make", ["create"]],
   ["making", ["create"]],
   ["configure", ["configuration", "settings"]],

@@ -46,22 +46,38 @@ function proseBlocks(answer) {
  * @param {CorpusChunk} source
  */
 export function formatExtractiveAnswer(source) {
-  const prose = source.content.replace(/^\s*(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\s*\1\s*$/gmu, "");
-  const candidates = prose.split(/\n\s*\n/gu).flatMap((paragraph) => {
+  /** @type {Array<{language: string, lines: string[]}>} */
+  const codeBlocks = [];
+  const prose = source.content.replace(/^\s*(`{3,}|~{3,})([^\n]*)\n([\s\S]*?)^\s*\1\s*$/gmu, (block, _fence, language, code) => {
+    const index = codeBlocks.push({
+      language: String(language).trim().toLocaleLowerCase("en-US"),
+      lines: String(code).split("\n").map((line) => line.trim()).filter(Boolean)
+    }) - 1;
+    return `\n\nSMGEN_CODE_BLOCK_${index}\n\n`;
+  });
+  const paragraphs = prose.split(/\n\s*\n/gu);
+  const candidates = paragraphs.flatMap((paragraph, index) => {
+    if (/^SMGEN_CODE_BLOCK_\d+$/u.test(paragraph.trim())) return [];
     const lines = paragraph.split("\n").map((line) => line.trim()).filter(Boolean);
     const list = lines.filter((line) => /^(?:[-*+]|\d+\.)\s+/u.test(line));
     const blocks = list.length === lines.length ? list : [lines.join(" ")];
     return blocks.flatMap((block) => {
       const cleaned = block.replace(/^(?:[-*+]|\d+\.)\s+/u, "").trim();
-      if (cleaned.length <= 180) return [cleaned];
+      const marker = paragraphs[index + 1]?.trim().match(/^SMGEN_CODE_BLOCK_(\d+)$/u);
+      const code = marker ? codeBlocks[Number(marker[1])] : undefined;
+      const commands = code && /^(?:bash|console|sh|shell)$/u.test(code.language)
+        ? code.lines.filter((line) => line.length <= 80).slice(0, 3)
+        : [];
+      const expanded = commands.length ? `${cleaned} ${commands.map((line) => `\`${line}\``).join(", ")}` : cleaned;
+      if (expanded.length <= 240) return [expanded];
       return cleaned.match(/[^.!?]+[.!?](?:\s|$)/gu)?.map((sentence) => sentence.trim()) ?? [];
     });
-  }).filter((block) => block && block.length <= 180 && !/^#{1,6}\s/u.test(block));
+  }).filter((block) => block && block.length <= 240 && !/^#{1,6}\s/u.test(block));
   /** @type {string[]} */
   const selected = [];
   let characters = 0;
   for (const block of candidates) {
-    if (selected.length >= 4 || characters + block.length > 420) break;
+    if (selected.length >= 4 || characters + block.length > 520) break;
     selected.push(block);
     characters += block.length;
   }
@@ -181,7 +197,7 @@ export function formatGroundedAnswer(answer, sources, finishReason) {
   if (!parsed || typeof parsed !== "object" || !("items" in parsed) || !Array.isArray(parsed.items)) {
     return { ok: false, reason: "invalid-shape" };
   }
-  if (parsed.items.length < 1 || parsed.items.length > 2) return { ok: false, reason: "invalid-shape" };
+  if (parsed.items.length < 1 || parsed.items.length > 3) return { ok: false, reason: "invalid-shape" };
   /** @type {Array<{content: string, source: number}>} */
   const items = [];
   for (const item of parsed.items) {

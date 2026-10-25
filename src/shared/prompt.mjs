@@ -12,7 +12,7 @@ export const MAX_QUESTION_CHARACTERS = 2000;
 const INSTRUCTIONS = `Use only the numbered documentation sources below.
 Never add a fact from memory. Copy commands, filenames, configuration keys, and literal values exactly from the cited source.
 Prefer earlier sources. Use a later source only when it adds a fact that directly answers the question.
-Select only the one or two most useful facts. Do not write a complete guide or exhaust the sources.`;
+Select only the two or three most useful facts. Do not write a complete guide or exhaust the sources.`;
 
 const OUTPUT_INSTRUCTIONS = `Return a JSON object with an "items" array.
 Each item must contain short "text" and the number of its supporting "source".
@@ -20,7 +20,7 @@ Each item must cover a different fact from the sources.
 Use the source wording where possible. Do not infer a step, prerequisite, or purpose that the source does not state.
 Do not combine claims from different sources in one item.
 The source number is the [Source N] label above a passage, not the item's position. Reuse a source number when it supports several items.
-Return one or two items and no more than 36 words total.
+Return two or three items and no more than 54 words total.
 Each text value must be one plain sentence of no more than 18 words. Never put a list, newline, heading, example, or code fence inside text.
 Put commands, filenames, configuration keys, and literal values in backticks.
 Do not include facts that the sources do not state.`;

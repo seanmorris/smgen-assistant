@@ -82,3 +82,16 @@ test("retrieval treats the project name as context when a specific topic is pres
   });
   assert.equal(selected[0]?.id, "config");
 });
+
+test("retrieval maps a project description question to its overview", () => {
+  const pages = [
+    { id: "overview", sourceId: "start", title: "Getting Started", heading: "SMGen", url: "/index.html#smgen", content: "SMGen converts Markdown to HTML. Pandoc renders content and Bash coordinates configuration." },
+    { id: "start", sourceId: "start", title: "Getting Started", heading: "Create a Site", url: "/index.html#create-a-site", content: "Create an SMGen site with smgen init, then build it with SMGen." }
+  ];
+  const selected = retrieveChunks(pages, "What does SMGen do?", {
+    maxChunks: 2,
+    maxCharacters: 1000,
+    currentUrl: "http://localhost:9000/"
+  });
+  assert.equal(selected[0]?.id, "overview");
+});

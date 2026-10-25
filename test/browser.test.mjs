@@ -259,7 +259,7 @@ test("answer streaming reports truncation and discourages repetition", async () 
   assert.equal(request?.repetition_penalty, 1.1);
   assert.equal(request?.frequency_penalty, 0.5);
   assert.equal(/** @type {{type?: string}} */ (request?.response_format).type, "json_object");
-  assert.match(/** @type {{schema?: string}} */ (request?.response_format).schema ?? "", /"maxItems":2/u);
+  assert.match(/** @type {{schema?: string}} */ (request?.response_format).schema ?? "", /"maxItems":3/u);
   assert.match(/** @type {{schema?: string}} */ (request?.response_format).schema ?? "", /"maxLength":140/u);
 });
 
