@@ -13,6 +13,24 @@
   const defaultSize = { width: 400, height: 624 };
   const darkPreference = window.matchMedia?.("(prefers-color-scheme: dark)");
 
+  /** Unload and unregister the engine service worker used by older releases. */
+  const retireLegacyServiceWorker = async () => {
+    if (!("serviceWorker" in navigator)) return;
+    try {
+      const registration = await navigator.serviceWorker.getRegistration(assetBase.href);
+      const worker = registration?.active ?? registration?.waiting ?? registration?.installing;
+      if (!registration || !worker) return;
+      const workerUrl = new URL(worker.scriptURL);
+      const legacyUrl = new URL("service-worker.js", assetBase);
+      if (workerUrl.origin !== legacyUrl.origin || workerUrl.pathname !== legacyUrl.pathname) return;
+      worker.postMessage({ kind: "unload", uuid: crypto.randomUUID(), content: null });
+      await registration.unregister();
+    } catch (error) {
+      console.warn("smgen-assistant: could not retire the previous service worker", error);
+    }
+  };
+  const legacyServiceWorkerRetired = retireLegacyServiceWorker();
+
   /** Read the host site's explicit theme, with the browser preference as a fallback. */
   const readTheme = () => {
     const classes = document.documentElement?.classList;
@@ -190,7 +208,8 @@
   };
 
   /** Create the frame on first use and reveal it on later uses. */
-  const open = () => {
+  const open = async () => {
+    await legacyServiceWorkerRetired;
     if (!frame) {
       shell = document.createElement("div");
       shell.className = "smgen-assistant-shell";
@@ -230,7 +249,7 @@
     syncTheme();
   };
 
-  button.addEventListener("click", open);
+  button.addEventListener("click", () => { void open(); });
   window.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && shell && !shell.hidden) close();
   });
@@ -255,5 +274,5 @@
     new MutationObserver(syncTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
   }
   darkPreference?.addEventListener?.("change", syncTheme);
-  if (restoreOpenState()) open();
+  if (restoreOpenState()) void open();
 })();

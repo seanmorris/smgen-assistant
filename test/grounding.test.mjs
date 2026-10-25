@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatExtractiveAnswer, formatGroundedAnswer, validateGroundedAnswer } from "../src/shared/grounding.mjs";
+import { formatExtractiveAnswer, formatGeneratedAnswer, formatGroundedAnswer, formatGroundedMarkdown, validateGroundedAnswer } from "../src/shared/grounding.mjs";
 
 const sources = [{
   id: "1",
@@ -50,6 +50,77 @@ test("structured answers become concise cited Markdown", () => {
     sources,
     filtered: false
   });
+});
+
+test("cited Markdown keeps natural paraphrases and compacts its sources", () => {
+  const primary = sources[0];
+  assert.ok(primary);
+  const other = { ...primary, id: "2", sourceId: "other", content: "SMGen produces HTML." };
+  assert.deepEqual(formatGroundedMarkdown("- Build a page by running `smgen init`. [Source 1]", [primary, other], "stop"), {
+    ok: true,
+    answer: "- Build a page by running `smgen init`. [Source 1]",
+    sources: [primary],
+    filtered: false
+  });
+});
+
+test("cited Markdown rejects an unrelated claim", () => {
+  assert.deepEqual(formatGroundedMarkdown("- Bootstrap uploads remote assets. [Source 1]", sources, "stop"), {
+    ok: false,
+    reason: "unsupported-content"
+  });
+});
+
+test("generated prose receives citations from its supporting passages", () => {
+  const primary = sources[0];
+  assert.ok(primary);
+  const other = { ...primary, id: "2", sourceId: "other", content: "SMGen produces static HTML pages." };
+  assert.deepEqual(formatGeneratedAnswer([
+    "- Initialize the site with `smgen init`.",
+    "- SMGen produces static HTML pages."
+  ].join("\n"), [primary, other], "stop"), {
+    ok: true,
+    answer: "- Initialize the site with `smgen init`. [Source 1]\n- SMGen produces static HTML pages. [Source 2]",
+    sources: [primary, other],
+    filtered: false
+  });
+});
+
+test("generated prose drops unsupported claims while keeping grounded bullets", () => {
+  assert.deepEqual(formatGeneratedAnswer([
+    "- Initialize the site with `smgen init`.",
+    "- Bootstrap uploads remote assets."
+  ].join("\n"), sources, "stop"), {
+    ok: true,
+    answer: "- Initialize the site with `smgen init`. [Source 1]",
+    sources,
+    filtered: true
+  });
+});
+
+test("generated prose rejects claims assembled from separate source paragraphs", () => {
+  const primary = sources[0];
+  assert.ok(primary);
+  const source = {
+    ...primary,
+    content: "Place Markdown pages under `pages/`.\n\nThe watch command rebuilds after a template changes."
+  };
+  assert.deepEqual(formatGeneratedAnswer("- Copy templates into `pages/`.", [source], "stop"), {
+    ok: false,
+    reason: "unsupported-content"
+  });
+});
+
+test("structured answers accept a JSON fence or short model preface", () => {
+  const json = JSON.stringify({ items: [{ text: "Run `smgen init`.", source: 1 }] });
+  for (const answer of [`\`\`\`json\n${json}\n\`\`\``, `Here is the answer:\n${json}`]) {
+    assert.deepEqual(formatGroundedAnswer(answer, sources, "stop"), {
+      ok: true,
+      answer: "- Run `smgen init`. [Source 1]",
+      sources,
+      filtered: false
+    });
+  }
 });
 
 test("structured answers reject invalid JSON and unsupported cited literals", () => {

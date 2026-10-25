@@ -11,7 +11,6 @@ import {
   loadModelWithRetry,
   MAX_RESPONSE_CHARACTERS,
   modelNeedsShaderF16,
-  serviceWorkerScriptUrl,
   streamAnswer
 } from "../src/browser/engine-client.mjs";
 import { countRuntimePromptTokens } from "../src/browser/prompt-tokens.mjs";
@@ -78,6 +77,7 @@ test("loader does not create or request the iframe before activation", async () 
   let notifyThemeChange;
   const context = {
     URL,
+    navigator: {},
     location: { href: "https://example.test/project/page.html" },
     sessionStorage: {
       getItem: (/** @type {string} */ key) => values.get(key) ?? null,
@@ -115,6 +115,7 @@ test("loader does not create or request the iframe before activation", async () 
   assert.deepEqual(appended.map((element) => element.tagName), ["STYLE", "BUTTON"]);
   const button = appended[1];
   button?.dispatch("click");
+  await Promise.resolve();
   assert.deepEqual(appended.map((element) => element.tagName), ["STYLE", "BUTTON", "DIV"]);
   const shell = appended[2];
   const frame = /** @type {FakeElement | undefined} */ (shell?.children[0]);
@@ -136,6 +137,14 @@ test("loader does not create or request the iframe before activation", async () 
   assert.equal(shell?.dataset.theme, "light");
   assert.equal(/** @type {{type?: string, theme?: string}} */ (frame?.contentWindow.messages.at(-1)).theme, "light");
   assert.equal(persistentValues.has("smgen-assistant:size:/project/__smgen-assistant/"), false);
+});
+
+test("loader retires a legacy engine service worker before opening the frame", async () => {
+  const source = await readFile(new URL("../src/browser/loader.mjs", import.meta.url), "utf8");
+  assert.match(source, /getRegistration\(assetBase\.href\)/u);
+  assert.match(source, /worker\.postMessage\(\{ kind: "unload"/u);
+  assert.match(source, /await registration\.unregister\(\)/u);
+  assert.match(source, /await legacyServiceWorkerRetired/u);
 });
 
 test("generated Markdown links reject executable schemes", () => {
@@ -218,7 +227,13 @@ test("model feature detection distinguishes f16 and f32 shader builds", () => {
 });
 
 test("model artifacts use large-file storage without Cache.add", () => {
-  const appConfig = createModelAppConfig();
+  const appConfig = createModelAppConfig({
+    model_list: [{
+      model_id: "Qwen2.5-Coder-0.5B-Instruct-q4f32_1-MLC",
+      model: "https://example.test/model/",
+      model_lib: "https://example.test/v0_2_48/Qwen2-0.5B-Instruct-q4f32_1-webgpu.wasm"
+    }]
+  });
   assert.equal(appConfig.useIndexedDBCache, true);
   const model = appConfig.model_list.find((/** @type {import('@mlc-ai/web-llm').ModelRecord} */ record) => (
     record.model_id === "Qwen2.5-Coder-0.5B-Instruct-q4f32_1-MLC"
@@ -298,10 +313,12 @@ test("answer streaming avoids blocking grammar compilation", async () => {
   );
   assert.equal(text, "Partial");
   assert.equal(finishReason, "length");
+  assert.deepEqual(request?.stream_options, { include_usage: true });
   assert.equal(request?.temperature, 0);
+  assert.equal(request?.top_p, 0.8);
   assert.equal(request?.max_tokens, 256);
-  assert.equal(request?.repetition_penalty, 1.1);
-  assert.equal(request?.frequency_penalty, 0.5);
+  assert.equal(request?.repetition_penalty, undefined);
+  assert.equal(request?.frequency_penalty, 0);
   assert.equal(request?.presence_penalty, 0);
   assert.equal(request?.response_format, undefined);
 });
@@ -327,20 +344,13 @@ test("answer streaming interrupts output too large to pass validation", async ()
   assert.equal(finishReason, "length");
 });
 
-test("service worker uses the assistant directory as its scope", async () => {
+test("the model uses a dedicated worker and retires older service workers", async () => {
   const source = await readFile(new URL("../src/browser/engine-client.mjs", import.meta.url), "utf8");
-  assert.match(source, /scope: "\.\/"/u);
-  assert.match(source, /controller\?\.scriptURL !== scriptUrl/u);
-  assert.match(source, /new ServiceWorkerMLCEngine\(engineConfig, 5000\)/u);
-  assert.match(source, /updateViaCache: "none"/u);
-  assert.match(source, /controller\.postMessage\(\{ kind: "unload"/u);
-  assert.equal(
-    serviceWorkerScriptUrl(
-      new URL("https://example.test/docs/__smgen-assistant/"),
-      "0.1.7"
-    ),
-    "https://example.test/docs/__smgen-assistant/service-worker.js?version=0.1.7"
-  );
+  assert.match(source, /new WebWorkerMLCEngine\(worker, engineConfig\)/u);
+  assert.match(source, /getRegistration\("\.\/"\)/u);
+  assert.match(source, /worker\.postMessage\(\{ kind: "unload"/u);
+  assert.match(source, /registration\.unregister\(\)/u);
+  assert.doesNotMatch(source, /new ServiceWorkerMLCEngine/u);
 });
 
 test("browser worker version matches the package release", async () => {
@@ -348,15 +358,7 @@ test("browser worker version matches the package release", async () => {
   assert.equal(VERSION, packageMetadata.version);
 });
 
-test("service worker takes control without waiting for a page reload", async () => {
-  const source = await readFile(new URL("../src/browser/service-worker.mjs", import.meta.url), "utf8");
-  assert.match(source, /workerScope\.skipWaiting\(\)/u);
-  assert.match(source, /workerScope\.clients\.claim\(\)/u);
-  assert.match(source, /smgen-assistant:check-webgpu/u);
-});
-
-test("a failed service worker engine retries in a dedicated worker", async () => {
+test("a failed engine is released before retry", async () => {
   const source = await readFile(new URL("../src/browser/frame.mjs", import.meta.url), "utf8");
-  assert.match(source, /forceDedicatedWorker = true/u);
   assert.match(source, /releaseAssistantEngine\(failedEngine\)/u);
 });

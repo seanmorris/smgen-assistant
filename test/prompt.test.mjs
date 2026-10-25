@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { fitPrompt, MAX_OUTPUT_TOKENS, MAX_PROMPT_TOKENS, promptMessages } from "../src/shared/prompt.mjs";
+import { fitPrompt, MAX_OUTPUT_TOKENS, MAX_PROMPT_TOKENS, promptMessages, questionUsesPreviousContext } from "../src/shared/prompt.mjs";
 
 const sources = [
   { id: "1", sourceId: "a", title: "Start", heading: "Create a Site", url: "/index.html#create-a-site", content: "Build instructions. ".repeat(55) },
@@ -23,11 +23,17 @@ test("prompt instructions require faithful cited paraphrases", () => {
   assert.match(messages[0]?.content ?? "", /Use only the numbered documentation sources/iu);
   assert.match(messages[0]?.content ?? "", /Copy commands, filenames, configuration keys/iu);
   assert.match(messages[0]?.content ?? "", /Prefer earlier sources/iu);
-  assert.match(messages.at(-1)?.content ?? "", /Return a JSON object with an "items" array/iu);
-  assert.match(messages.at(-1)?.content ?? "", /Return two or three items and no more than 54 words total/iu);
-  assert.match(messages.at(-1)?.content ?? "", /Never put a list, newline, heading, example, or code fence inside text/iu);
+  assert.match(messages.at(-1)?.content ?? "", /Answer the question directly with one to four short Markdown bullets/iu);
+  assert.match(messages.at(-1)?.content ?? "", /no more than 90 words total/iu);
+  assert.match(messages.at(-1)?.content ?? "", /interface adds them after validation/iu);
   assert.match(messages.at(-1)?.content ?? "", /Do not infer a step, prerequisite, or purpose/iu);
   assert.match(messages.at(-1)?.content ?? "", /^Question: How do I build\?/u);
+});
+
+test("only referential questions receive prior-turn context", () => {
+  assert.equal(questionUsesPreviousContext("What about plugins?"), true);
+  assert.equal(questionUsesPreviousContext("How do I configure it?"), true);
+  assert.equal(questionUsesPreviousContext("How do I deploy to GitHub Pages?"), false);
 });
 
 test("prompt fitting drops old context and low-ranked sources", async () => {

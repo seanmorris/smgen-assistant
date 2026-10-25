@@ -3,7 +3,7 @@
 /** @typedef {import('./types.mjs').CorpusChunk} CorpusChunk */
 
 const LOW_VALUE_WORDS = new Set([
-  "about", "after", "also", "and", "are", "author", "authors", "before", "can", "each", "for", "from", "into", "its", "let", "lets", "may", "need", "only", "own", "running", "that", "the", "their", "them", "then", "this", "through", "using", "with", "your"
+  "about", "after", "also", "and", "are", "author", "authors", "before", "can", "each", "for", "from", "into", "its", "let", "lets", "may", "need", "only", "own", "running", "that", "the", "their", "them", "then", "thing", "this", "through", "using", "with", "your"
 ]);
 const GROUNDED_EQUIVALENTS = new Map([
   ["additional", ["custom"]],
@@ -129,6 +129,27 @@ function wordingHasSourceSupport(text, source) {
 }
 
 /**
+ * Rank a generated block against one source after enforcing its literals.
+ *
+ * @param {string} text
+ * @param {CorpusChunk} source
+ */
+function generatedSourceScore(text, source) {
+  const words = [...new Set((text.toLocaleLowerCase("en-US").match(/[\p{L}\p{N}]+/gu) ?? [])
+    .filter((word) => word.length > 2 && !LOW_VALUE_WORDS.has(word)))];
+  const literals = technicalLiterals(text);
+  const segments = source.content.split(/\n\s*\n/gu).map(comparable).filter(Boolean);
+  return segments.reduce((best, documentation) => {
+    if (literals.some((literal) => !documentation.includes(comparable(literal)))) return best;
+    const sourceWords = new Set(documentation.toLocaleLowerCase("en-US").match(/[\p{L}\p{N}]+/gu) ?? []);
+    const supported = words.filter((word) => groundedVariants(word).some((variant) => sourceWords.has(variant))).length;
+    const ratio = words.length ? supported / words.length : 1;
+    if (supported < Math.min(2, words.length) || ratio < 0.6) return best;
+    return Math.max(best, supported * 10 + ratio);
+  }, -1);
+}
+
+/**
  * Find repeated answer blocks after removing numbering and citations.
  *
  * @param {string[]} blocks
@@ -179,7 +200,83 @@ export function validateGroundedAnswer(answer, sources, finishReason) {
     return technicalLiterals(block).filter((literal) => !documentation.includes(comparable(literal)));
   }))];
   if (unsupported.length) return { ok: false, reason: "unsupported-literals", unsupported };
+  const unsupportedWording = blocks.some((block) => {
+    const sourceNumbers = [...block.matchAll(/\[Source (\d+)\]/gu)].map((match) => Number(match[1]));
+    if (!sourceNumbers.length) return true;
+    const cited = sourceNumbers.map((number) => sources[number - 1]).filter((source) => source !== undefined);
+    const wording = block.replace(/^\s*(?:[-*+]|\d+\.)\s*/u, "").replace(/\s*\[Source \d+\]\s*/gu, "").trim();
+    return !cited.some((source) => wordingHasSourceSupport(wording, source));
+  });
+  if (unsupportedWording) return { ok: false, reason: "unsupported-content" };
   return { ok: true };
+}
+
+/**
+ * Validate cited Markdown and retain only the sources its citations use.
+ *
+ * @param {string} answer
+ * @param {CorpusChunk[]} sources
+ * @param {string | null} finishReason
+ * @returns {{ok: true, answer: string, sources: CorpusChunk[], filtered: false} | {ok: false, reason: string, unsupported?: string[]}}
+ */
+export function formatGroundedMarkdown(answer, sources, finishReason) {
+  const trimmed = answer.trim();
+  const grounding = validateGroundedAnswer(trimmed, sources, finishReason);
+  if (!grounding.ok) return grounding;
+  const numbers = [...new Set([...trimmed.matchAll(/\[Source (\d+)\]/gu)].map((match) => Number(match[1])))];
+  const selected = numbers.map((number) => sources[number - 1]).filter((source) => source !== undefined);
+  const positions = new Map(numbers.map((number, index) => [number, index + 1]));
+  const markdown = trimmed.replace(/\[Source (\d+)\]/gu, (_citation, number) => `[Source ${positions.get(Number(number))}]`);
+  return { ok: true, answer: markdown, sources: selected, filtered: false };
+}
+
+/**
+ * Match generated prose to documentation and append verified citations.
+ *
+ * @param {string} answer
+ * @param {CorpusChunk[]} sources
+ * @param {string | null} _finishReason
+ * @returns {{ok: true, answer: string, sources: CorpusChunk[], filtered: boolean} | {ok: false, reason: string, unsupported?: string[]}}
+ */
+export function formatGeneratedAnswer(answer, sources, _finishReason) {
+  if (!answer.trim()) return { ok: false, reason: "empty" };
+  if (!sources.length) return { ok: false, reason: "missing-sources" };
+  const rawBlocks = proseBlocks(answer).slice(0, 6);
+  /** @type {Array<{content: string, source: number}>} */
+  const matched = [];
+  for (const [blockIndex, raw] of rawBlocks.entries()) {
+    const content = raw
+      .replace(/^\s*(?:[-*+]|\d+\.)\s*/u, "")
+      .replace(/\s*\[Source \d+\]\s*/gu, "")
+      .trim();
+    if (!content || content.length > 280 || /^#{1,6}\s/u.test(content)) {
+      if (blockIndex === 0) return { ok: false, reason: "unsupported-content" };
+      continue;
+    }
+    if (!/[.!?`]$/u.test(content)) {
+      if (blockIndex === 0) return { ok: false, reason: "unsupported-content" };
+      continue;
+    }
+    const ranked = sources
+      .map((source, index) => ({ index, score: generatedSourceScore(content, source) }))
+      .filter((candidate) => candidate.score >= 0)
+      .sort((a, b) => b.score - a.score || a.index - b.index);
+    const best = ranked[0];
+    if (!best) {
+      if (blockIndex === 0) return { ok: false, reason: "unsupported-content" };
+      continue;
+    }
+    const key = comparable(content).toLocaleLowerCase("en-US");
+    if (!matched.some((item) => comparable(item.content).toLocaleLowerCase("en-US") === key)) {
+      matched.push({ content, source: best.index });
+    }
+    if (matched.length >= 4) break;
+  }
+  if (!matched.length) return { ok: false, reason: "unsupported-content" };
+  const used = [...new Set(matched.map((item) => item.source))];
+  const selected = used.map((index) => sources[index]).filter((source) => source !== undefined);
+  const markdown = matched.map((item) => `- ${item.content} [Source ${used.indexOf(item.source) + 1}]`).join("\n");
+  return { ok: true, answer: markdown, sources: selected, filtered: matched.length < rawBlocks.length };
 }
 
 /**
@@ -195,7 +292,16 @@ export function formatGroundedAnswer(answer, sources, finishReason) {
   /** @type {unknown} */
   let parsed;
   try {
-    parsed = JSON.parse(answer);
+    const trimmed = answer.trim();
+    const unfenced = trimmed.replace(/^```(?:json)?\s*/iu, "").replace(/\s*```$/u, "");
+    try {
+      parsed = JSON.parse(unfenced);
+    } catch {
+      const start = unfenced.indexOf("{");
+      const end = unfenced.lastIndexOf("}");
+      if (start < 0 || end <= start) throw new SyntaxError("No JSON object found.");
+      parsed = JSON.parse(unfenced.slice(start, end + 1));
+    }
   } catch {
     return { ok: false, reason: "invalid-json" };
   }

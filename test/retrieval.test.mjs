@@ -95,3 +95,61 @@ test("retrieval maps a project description question to its overview", () => {
   });
   assert.equal(selected[0]?.id, "overview");
 });
+
+test("retrieval maps a novice introduction question to the overview", () => {
+  const pages = [
+    { id: "requirements", sourceId: "start", title: "Getting Started", heading: "Requirements", url: "/index.html#requirements", content: "A build requires Bash, PHP, yq, and Pandoc." },
+    { id: "overview", sourceId: "start", title: "Getting Started", heading: "SMGen", url: "/index.html#smgen", content: "SMGen converts Markdown to HTML. Pandoc renders content and Bash coordinates configuration." }
+  ];
+  const selected = retrieveChunks(pages, "What is this thing, and why would I use it?", {
+    maxChunks: 2,
+    maxCharacters: 1000,
+    currentUrl: "http://localhost:9000/navigation.html"
+  });
+  assert.equal(selected[0]?.id, "overview");
+});
+
+test("retrieval does not rank passages from conversational filler", () => {
+  const selected = retrieveChunks([
+    { id: "license", sourceId: "license", title: "License", heading: "Definitions", url: "/LICENSE.html", content: "Terms and conditions for use of the work." }
+  ], "What is this thing, and why would I use it?", {
+    maxChunks: 2,
+    maxCharacters: 1000,
+    currentUrl: "http://localhost:9000/navigation.html"
+  });
+  assert.deepEqual(selected, []);
+});
+
+test("retrieval routes novice page-location and menu-creation questions", () => {
+  const pages = [
+    { id: "writing", sourceId: "writing", title: "Writing Pages", heading: "Writing Pages", url: "/writing-pages.html#writing-pages", content: "Place source pages under PAGES_DIR, which defaults to pages/." },
+    { id: "frontmatter", sourceId: "writing", title: "Writing Pages", heading: "Writing Pages > Page Frontmatter", url: "/writing-pages.html#page-frontmatter", content: "A page may begin with YAML frontmatter." },
+    { id: "define", sourceId: "navigation", title: "Navigation and Plugins", heading: "Navigation and Plugins > Define Menus and Regions", url: "/navigation.html#define-menus-and-regions", content: "Templates place named menus in named regions." },
+    { id: "legacy", sourceId: "navigation", title: "Navigation and Plugins", heading: "Navigation and Plugins > Legacy Navigation", url: "/navigation.html#legacy-navigation", content: "SMGen defines a built-in sidebar menu." }
+  ];
+  const options = { maxChunks: 2, maxCharacters: 1000, currentUrl: "http://localhost:9000/navigation.html" };
+  assert.equal(retrieveChunks(pages, "Where do I put the words and pages for my site?", options)[0]?.id, "writing");
+  assert.equal(retrieveChunks(pages, "Can I make a new kind of sidebar menu?", options)[0]?.id, "define");
+  assert.equal(retrieveChunks(pages, "Can I make a new kind of sidebar menu?", { ...options, maxChunks: 4 }).length, 1);
+});
+
+test("retrieval routes varied project-maintenance language", () => {
+  const pages = [
+    { id: "start", sourceId: "start", title: "Getting Started", heading: "Create a Site", url: "/index.html#create-a-site", content: "Initialize an empty directory with smgen init, then build and serve it." },
+    { id: "writing", sourceId: "writing", title: "Writing Pages", heading: "Writing Pages", url: "/writing-pages.html#writing-pages", content: "Source pages under pages/ keep their directory structure and receive an HTML extension." },
+    { id: "assets", sourceId: "custom", title: "Customization", heading: "Customization > Add Styles and Scripts", url: "/customization.html#add-styles-and-scripts", content: "Put browser assets under static/ and add their published URLs to configuration." },
+    { id: "public", sourceId: "deploy", title: "Deployment", heading: "Deployment > Set the Public URL", url: "/deployment.html#set-the-public-url", content: "Set BASE_URL to the site's public root before a production build." },
+    { id: "precedence", sourceId: "config", title: "Configuration", heading: "Configuration > Precedence", url: "/configuration.html#precedence", content: "Calling-process values override project YAML settings." },
+    { id: "legacy", sourceId: "navigation", title: "Navigation", heading: "Navigation > Legacy Navigation", url: "/navigation.html#legacy-navigation", content: "Pages without menus continue to use leftBarLink." },
+    { id: "license", sourceId: "license", title: "License", heading: "Definitions", url: "/LICENSE.html#definitions", content: "The work is provided under this license. You have the right to use it." }
+  ];
+  /** @param {string} question */
+  const first = (question) => retrieveChunks(pages, question, { maxChunks: 4, maxCharacters: 3000 })[0]?.id;
+  assert.equal(first("What commands and files do I need to go from nothing to a local SMGen page?"), "start");
+  assert.equal(first("If I create pages/guides/install.md, where does SMGen publish it?"), "writing");
+  assert.equal(first("What is the right way to add my own CSS and JavaScript?"), "assets");
+  assert.equal(first("My site will live under a subdirectory. How do I keep generated links working?"), "public");
+  assert.equal(first("What should BASE_URL contain for a production build?"), "public");
+  assert.equal(first("Where should I put a local override that beats the project YAML?"), "precedence");
+  assert.equal(first("Will leftBarLink still work if I start adding named menus?"), "legacy");
+});

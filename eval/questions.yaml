@@ -1,0 +1,226 @@
+version: 1
+
+# Ask each standalone variant in a fresh conversation. The variants express the
+# same intent in different language and should retrieve the same documentation.
+roles:
+  - id: first-time-user
+    label: First-time site owner
+    description: Has never used SMGen and may not know static-site terminology.
+    scenarios:
+      - id: understand-smgen
+        goal: Explain what SMGen does and what the published site needs.
+        expectedSources:
+          - /index.html#smgen
+          - /deployment.html#static-hosting
+        requiredFacts:
+          - SMGen turns Markdown into static HTML.
+          - The deployed site does not need PHP or an application server.
+        variants:
+          - What is SMGen, and what would I use it for?
+          - I have never used a static site generator. What does SMGen actually do?
+          - If I build a site with SMGen, what runs on the web server afterward?
+
+      - id: create-first-site
+        goal: Give the shortest documented path from an empty directory to a local site.
+        expectedSources:
+          - /index.html#create-a-site
+          - /cli.html#smgen-init
+        requiredFacts:
+          - Run `smgen init` in an empty directory.
+          - Put the first page at `pages/index.md`.
+          - Run `smgen build` and `smgen serve`, then open port 8000.
+        variants:
+          - I have an empty folder. How do I make my first SMGen site?
+          - Walk me through creating and viewing a tiny site from scratch.
+          - What commands and files do I need to go from nothing to a local SMGen page?
+
+  - id: content-author
+    label: Content author
+    description: Writes pages and metadata without changing templates or build code.
+    scenarios:
+      - id: add-page
+        goal: Explain where a Markdown page belongs and how its output path is chosen.
+        expectedSources:
+          - /writing-pages.html#writing-pages
+          - /writing-pages.html#page-frontmatter
+        requiredFacts:
+          - Source pages go under `PAGES_DIR`, which defaults to `pages/`.
+          - The source directory structure is preserved and the extension becomes `.html`.
+          - A page can begin with YAML frontmatter enclosed by `---` lines.
+        variants:
+          - Where do I put a new page, and what URL will it get?
+          - How do I add a Markdown page with a title to an SMGen site?
+          - If I create `pages/guides/install.md`, where does SMGen publish it?
+
+      - id: publish-to-feeds
+        goal: Explain how a page joins feeds and which dates RSS uses.
+        expectedSources:
+          - /rss.html#select-pages
+          - /rss.html#dates-and-item-data
+        requiredFacts:
+          - The `feeds` frontmatter field selects one or more named feeds.
+          - RSS uses `date`, then `created`.
+          - RSS does not infer a timestamp and fails when a selected page has no date.
+        variants:
+          - How do I publish one article to both my main and releases RSS feeds?
+          - Which frontmatter makes a page appear in an RSS feed, and which date does it use?
+          - I selected a page for a feed but it has no date. What will SMGen do?
+
+  - id: navigation-builder
+    label: Navigation builder
+    description: Configures menus, regions, page membership, and archive navigation.
+    scenarios:
+      - id: add-sidebar-menu
+        goal: Describe how to define and place another sidebar menu.
+        expectedSources:
+          - /navigation.html#define-menus-and-regions
+        requiredFacts:
+          - Define the menu under `MENUS`.
+          - Add its name to `MENU_REGIONS.sidebar`.
+          - Choose a `flat`, `tree`, or `timeline` renderer.
+        variants:
+          - How can I add a second menu to the sidebar?
+          - I want another navigation block on the left. What YAML do I change?
+          - Where do I define a new tree menu and tell SMGen to render it in the sidebar?
+
+      - id: select-menu-pages
+        goal: Compare author-selected menu membership with plugin selectors.
+        expectedSources:
+          - /navigation.html#select-menus-from-pages
+          - /navigation.html#menu-plugins
+        requiredFacts:
+          - Authors can use `menus` in page or directory frontmatter.
+          - Plugins can select pages with `include`, `exclude`, and `where` rules.
+          - A page can set a menu membership to `false` to veto a selector.
+        variants:
+          - How can pages opt into a menu, and can a plugin select pages in bulk?
+          - I need all public guides in one menu except a few pages. How should I configure that?
+          - Can a content author remove one page from a menu that a plugin populated?
+
+      - id: create-timeline
+        goal: Explain timeline behavior, date selection, and conditional assets.
+        expectedSources:
+          - /navigation.html#timeline-menus
+        requiredFacts:
+          - A timeline renders a calendar and expandable year and month groups.
+          - It uses `date`, then `created`, then documented filesystem or Git fallbacks.
+          - It adds no timeline JavaScript and links `archive.css` only for a populated rendered timeline.
+        variants:
+          - How do I make a Blogger-style archive with years, months, and a calendar?
+          - What date does a timeline menu use when a page has no `date` field?
+          - Does enabling a timeline add JavaScript or CSS to every page?
+
+  - id: theme-developer
+    label: Theme developer
+    description: Changes presentation, browser assets, and page templates.
+    scenarios:
+      - id: add-assets
+        goal: Explain how authored CSS and JavaScript are copied and linked.
+        expectedSources:
+          - /customization.html#add-styles-and-scripts
+          - /configuration.html#styles-and-scripts
+        requiredFacts:
+          - Put authored browser assets under `static/`.
+          - Add their URLs to the appropriate style or script setting.
+          - "`smgen watch` rebuilds after a static file changes."
+        variants:
+          - What is the right way to add my own CSS and JavaScript?
+          - I put `theme.css` under `static/`, but the page does not load it. What else is required?
+          - Does the watch command publish changes to files in the static directory?
+
+      - id: customize-layout
+        goal: Explain how to create and select a custom page template.
+        expectedSources:
+          - /customization.html#write-a-page-template
+        requiredFacts:
+          - A page template combines PHP with Pandoc template variables.
+          - Select a custom template with the page's `template` frontmatter field.
+          - Template paths must remain inside `TEMPLATE_DIR`.
+        variants:
+          - How do I give one page a different HTML layout?
+          - Can I copy the default page template, change it, and select it in frontmatter?
+          - Where does a custom template live, and how does a page choose it?
+
+  - id: publisher
+    label: Site publisher
+    description: Builds production output and deploys it to static hosting.
+    scenarios:
+      - id: deploy-github-pages
+        goal: Describe the documented GitHub Actions deployment without inventing commands.
+        expectedSources:
+          - /deployment.html#github-pages-with-actions
+        requiredFacts:
+          - Configure GitHub Pages to use GitHub Actions.
+          - Obtain the Pages base URL before the build.
+          - Upload `docs/` as the Pages artifact.
+        variants:
+          - How should I deploy an SMGen site to GitHub Pages with Actions?
+          - What does the repository's Pages workflow need to do before and after `smgen build`?
+          - I do not want to commit generated files. How can GitHub build and publish the site?
+
+      - id: set-public-url
+        goal: Explain why and how to set the production base URL.
+        expectedSources:
+          - /deployment.html#set-the-public-url
+          - /configuration.html#site-and-page-settings
+        requiredFacts:
+          - Set `BASE_URL` to the site's public root before a production build.
+          - SMGen applies it to generated asset, navigation, search, and sitemap URLs.
+          - A trailing slash is optional.
+        variants:
+          - My site will live under a subdirectory. How do I keep generated links working?
+          - What should `BASE_URL` contain for a production build?
+          - Do I include a trailing slash when I set the public URL?
+
+  - id: site-maintainer
+    label: Existing-site maintainer
+    description: Diagnoses configuration and moves older sites toward newer features.
+    scenarios:
+      - id: resolve-configuration
+        goal: State the configuration precedence precisely.
+        expectedSources:
+          - /configuration.html#precedence
+        requiredFacts:
+          - Built-in defaults have the lowest precedence.
+          - "`.smgen.yaml`, environment YAML, `.smgen-rc`, and `.env` follow in that order."
+          - Values exported by the calling process have the highest precedence.
+        variants:
+          - My shell value and `.smgen.yaml` disagree. Which one wins?
+          - In what order does SMGen load its configuration sources?
+          - Where should I put a local override that beats the project YAML?
+
+      - id: migrate-legacy-navigation
+        goal: Explain how old sidebar settings coexist with named menus.
+        expectedSources:
+          - /navigation.html#legacy-navigation
+          - /navigation.html#select-menus-from-pages
+        requiredFacts:
+          - Pages without `menus` keep the legacy `leftBarLink`, `date`, and `archive` behavior.
+          - Pages with `menus` use explicit named-menu membership instead of legacy inference.
+          - Existing `renderNavBar()` helpers can remain while a site migrates incrementally.
+        variants:
+          - Will `leftBarLink` still work if I start adding named menus?
+          - How can I migrate an older sidebar setup without changing every page at once?
+          - What happens to legacy navigation inference when a page gets a `menus` field?
+
+# Run each sequence in one conversation. These cases test whether a short
+# referential follow-up receives enough earlier user context without reusing an
+# earlier model answer.
+conversationSequences:
+  - id: beginner-output-follow-up
+    role: first-time-user
+    turns:
+      - question: How do I create a site in an empty folder?
+        expectedSources: [/index.html#create-a-site]
+      - question: Where does it put the finished files?
+        expectedSources: [/index.html#create-a-site, /configuration.html#project-paths]
+      - question: Can I change that directory?
+        expectedSources: [/configuration.html#project-paths]
+
+  - id: menu-opt-out-follow-up
+    role: navigation-builder
+    turns:
+      - question: Can a plugin put all guide pages into my documentation menu?
+        expectedSources: [/navigation.html#menu-plugins]
+      - question: How can one page opt out?
+        expectedSources: [/navigation.html#select-menus-from-pages]

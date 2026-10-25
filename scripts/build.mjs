@@ -46,6 +46,7 @@ await build({
   bundle: true,
   splitting: true,
   platform: "browser",
+  external: ["url"],
   format: "esm",
   target: ["es2022"],
   minify: true,

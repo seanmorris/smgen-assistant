@@ -4,7 +4,7 @@
 
 const WORD = /[\p{L}\p{N}_./:+#-]+/gu;
 const LOW_VALUE_TERMS = new Set([
-  "a", "an", "and", "are", "do", "does", "explain", "for", "how", "i", "in", "is", "it", "me", "of", "on", "smgen", "tell", "the", "this", "through", "to", "use", "walk", "what", "with", "you", "your"
+  "a", "an", "and", "are", "do", "does", "explain", "for", "how", "i", "in", "is", "it", "me", "of", "on", "smgen", "tell", "the", "thing", "this", "through", "to", "use", "walk", "what", "why", "with", "would", "you", "your"
 ]);
 const RELATED_TERMS = new Map([
   ["does", ["converts", "coordinates", "renders"]],
@@ -111,8 +111,35 @@ function scoreChunk(chunk, query, terms, currentUrl) {
     score += Math.min(occurrences(heading, term), 3) * (technical ? 10 : 6) * weight;
     score += Math.min(occurrences(content, term), 6) * (technical ? 4 : 1.5) * weight;
   }
-  if (/\b(?:begin|build|create|generate|make|start|use)\b/u.test(exact) && /\b(?:create a site|getting started|quick start)\b/u.test(`${title} ${heading}`)) {
+  if (/\b(?:begin|build|create|generate|make|start)\b/u.test(exact) && /\b(?:create a site|getting started|quick start)\b/u.test(`${title} ${heading}`)) {
     score += 36;
+  }
+  if (/\b(?:from (?:nothing|scratch)|first (?:local )?(?:page|site)|empty (?:directory|folder))\b/u.test(exact) && /\b(?:create a site|smgen init)\b/u.test(`${title} ${heading}`)) {
+    score += 48;
+  }
+  if (/\b(?:what is|what does|what.*for|why (?:use|would)|tell me about)\b/u.test(exact) && /^(?:smgen|overview|introduction)$/u.test(heading)) {
+    score += 48;
+  }
+  if (/\b(?:where|which).*(?:put|store|write).*(?:content|page|pages|words)\b/u.test(exact) && /(?:^| > )writing pages$/u.test(heading)) {
+    score += 48;
+  }
+  if (/\bwhere\b.*\b(?:publish|output|url|end up)\b/u.test(exact) && /(?:\.md\b|markdown|page)/u.test(exact) && /(?:^| > )writing pages$/u.test(heading)) {
+    score += 80;
+  }
+  if (/\b(?:add|another|create|custom|make|new).*(?:menu|navigation)\b/u.test(exact) && /define menus and regions$/u.test(heading)) {
+    score += 48;
+  }
+  if (/\b(?:css|javascript|stylesheet|scripts?|static)\b/u.test(exact) && /\b(?:add|custom|load|own|publish|watch)\b/u.test(exact) && /add styles and scripts$/u.test(heading)) {
+    score += 64;
+  }
+  if (/(?:\bbase_url\b|\bsubdirectory\b.*\blinks?\b)/u.test(exact) && /set the public url$/u.test(heading)) {
+    score += 72;
+  }
+  if (/\b(?:override|beats?|wins?|precedence|order)\b/u.test(exact) && /\b(?:config(?:uration)?|environment|shell|yaml)\b/u.test(exact) && /precedence$/u.test(heading)) {
+    score += 64;
+  }
+  if (/\b(?:leftbarlink|leftbarshow|navigation_widgets|archive_title)\b/u.test(exact) && /legacy navigation$/u.test(heading)) {
+    score += 72;
   }
   if (score > 0 && currentUrl && comparablePath(chunk.url) === comparablePath(currentUrl)) {
     score += 28;
@@ -128,8 +155,7 @@ function scoreChunk(chunk, query, terms, currentUrl) {
  */
 function weightedTerms(chunks, queryTerms) {
   const useful = queryTerms.filter((term) => !LOW_VALUE_TERMS.has(term));
-  const base = useful.length ? useful : queryTerms;
-  const variants = [...new Set(base.flatMap(termVariants))];
+  const variants = [...new Set(useful.flatMap(termVariants))];
   return variants.map((value) => {
     const frequency = chunks.reduce((count, chunk) => {
       const searchable = normalized(`${chunk.title}\n${chunk.heading}\n${chunk.content}`);
@@ -137,6 +163,20 @@ function weightedTerms(chunks, queryTerms) {
     }, 0);
     return { value, weight: Math.log((chunks.length + 1) / (frequency + 1)) + 1 };
   });
+}
+
+/**
+ * Report whether one strong passage should answer a narrowly phrased task.
+ *
+ * @param {string} query
+ */
+function focusedQuery(query) {
+  const value = normalized(query);
+  return /\bgithub pages\b/u.test(value)
+    || /\b(?:empty|new) (?:directory|folder)\b/u.test(value)
+    || /\b(?:where|which).*(?:put|store|write).*(?:content|page|pages|words)\b/u.test(value)
+    || /\b(?:add|another|create|custom|make|new).*(?:menu|navigation)\b/u.test(value)
+    || /\bwhat (?:does|is) (?:smgen|this)\b/u.test(value);
 }
 
 /**
@@ -183,9 +223,10 @@ export function retrieveChunks(chunks, query, options) {
     .sort((a, b) => b.score - a.score || a.index - b.index);
   /** @type {CorpusChunk[]} */
   const selected = [];
+  const maxChunks = focusedQuery(query) ? 1 : options.maxChunks;
   const remaining = [...ranked];
   const sources = new Set();
-  while (selected.length < options.maxChunks && remaining.length) {
+  while (selected.length < maxChunks && remaining.length) {
     let index = 0;
     let best = -Infinity;
     for (let candidate = 0; candidate < remaining.length; candidate += 1) {

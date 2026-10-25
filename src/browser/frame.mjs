@@ -1,8 +1,8 @@
 // @ts-check
 
 import { retrieveChunks } from "../shared/retrieval.mjs";
-import { formatExtractiveAnswer, formatGroundedAnswer } from "../shared/grounding.mjs";
-import { fitPrompt, MAX_QUESTION_CHARACTERS } from "../shared/prompt.mjs";
+import { formatExtractiveAnswer, formatGeneratedAnswer } from "../shared/grounding.mjs";
+import { fitPrompt, MAX_QUESTION_CHARACTERS, questionUsesPreviousContext } from "../shared/prompt.mjs";
 import { renderMarkdown } from "./render.mjs";
 
 /** @typedef {import('../shared/types.mjs').Corpus} Corpus */
@@ -47,7 +47,6 @@ let corpus = null;
 let config = null;
 /** @type {MLCEngineInterface | null} */
 let engine = null;
-let forceDedicatedWorker = false;
 /** @type {AbortController | null} */
 let generation = null;
 /** @type {{url: string, title: string}} */
@@ -241,7 +240,6 @@ async function ensureEngine(activity) {
   engine = await module.createAssistantEngine({
     modelId: config.model.id,
     assetBase,
-    forceDedicatedWorker,
     onProgress: (report) => {
       activity.progress.value = Math.max(0, Math.min(1, report.progress));
       activity.label.textContent = report.text || "Downloading model…";
@@ -251,8 +249,13 @@ async function ensureEngine(activity) {
   return engine;
 }
 
-/** Find the newest prior user question without feeding model answers back to it. */
-function previousUserQuestion() {
+/**
+ * Find the newest user question when the current wording refers back to it.
+ *
+ * @param {string} question
+ */
+function previousUserQuestion(question) {
+  if (!questionUsesPreviousContext(question)) return "";
   return [...transcript].reverse().find((message) => message.role === "user")?.content ?? "";
 }
 
@@ -319,7 +322,7 @@ async function askQuestion(suppliedQuestion) {
     const fitted = await fitPrompt(
       question,
       retrieved,
-      previousUserQuestion(),
+      previousUserQuestion(question),
       (messages) => module.countPromptTokens(activeEngine, messages)
     );
     if (!fitted) {
@@ -346,7 +349,7 @@ async function askQuestion(suppliedQuestion) {
       assistantMessage.content += text;
     }, generation.signal);
     if (generation.signal.aborted) throw new DOMException("The answer was stopped.", "AbortError");
-    const grounding = formatGroundedAnswer(assistantMessage.content, fitted.sources, finishReason);
+    const grounding = formatGeneratedAnswer(assistantMessage.content, fitted.sources, finishReason);
     if (!grounding.ok) {
       console.warn("smgen-assistant: rejected ungrounded answer", grounding);
       const best = fitted.sources[0];
@@ -379,7 +382,6 @@ async function askQuestion(suppliedQuestion) {
       } else {
         const failedEngine = engine;
         engine = null;
-        forceDedicatedWorker = true;
         if (failedEngine) await module.releaseAssistantEngine(failedEngine);
         modelNoteElement.textContent = "The model will restart when you try again.";
         showRetry(activity.article, question, "The model stopped before it could answer.");

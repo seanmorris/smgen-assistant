@@ -1,6 +1,6 @@
 {
   "name": "smgen-assistant",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "description": "Build a private, in-browser AI assistant for an SMGen site.",
   "keywords": [
     "smgen",
@@ -26,6 +26,7 @@
   "files": [
     "bin",
     "dist",
+    "eval",
     "README.md",
     "LICENSE",
     "THIRD_PARTY_NOTICES.md"
@@ -41,7 +42,7 @@
     "prepack": "npm run check"
   },
   "dependencies": {
-    "@mlc-ai/web-llm": "0.2.79",
+    "@mlc-ai/web-llm": "0.2.81",
     "yaml": "2.9.1"
   },
   "devDependencies": {

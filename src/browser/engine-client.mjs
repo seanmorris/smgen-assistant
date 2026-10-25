@@ -1,40 +1,15 @@
 // @ts-check
 
-import { prebuiltAppConfig, ServiceWorkerMLCEngine, WebWorkerMLCEngine } from "@mlc-ai/web-llm";
-import { VERSION } from "../shared/version.mjs";
-
-export const MAX_RESPONSE_CHARACTERS = 560;
+export const MAX_RESPONSE_CHARACTERS = 1200;
 
 /** @typedef {import('@mlc-ai/web-llm').MLCEngineInterface} MLCEngineInterface */
 /** @typedef {import('@mlc-ai/web-llm').InitProgressReport} InitProgressReport */
-
-/**
- * Wait for the assistant service worker to replace any broader controller.
- *
- * @param {string} scriptUrl
- * @param {number} timeout
- */
-async function waitForController(scriptUrl, timeout) {
-  if (navigator.serviceWorker.controller?.scriptURL === scriptUrl) return;
-  await new Promise((resolve, reject) => {
-    const timer = window.setTimeout(() => reject(new Error("service worker did not take control")), timeout);
-    /** Resolve after the controller matches the registered assistant worker. */
-    const changed = () => {
-      if (navigator.serviceWorker.controller?.scriptURL !== scriptUrl) return;
-      window.clearTimeout(timer);
-      navigator.serviceWorker.removeEventListener("controllerchange", changed);
-      resolve(undefined);
-    };
-    navigator.serviceWorker.addEventListener("controllerchange", changed);
-  });
-}
 
 /**
  * @typedef {object} EngineOptions
  * @property {string} modelId
  * @property {URL} assetBase
  * @property {(report: InitProgressReport) => void} onProgress
- * @property {boolean} [forceDedicatedWorker]
  */
 
 /**
@@ -50,38 +25,28 @@ export function modelNeedsShaderF16(modelId) {
 /**
  * Build WebLLM's model configuration with IndexedDB artifact storage.
  *
+ * @param {import('@mlc-ai/web-llm').AppConfig} prebuiltConfig
  * @returns {import('@mlc-ai/web-llm').AppConfig}
  */
-export function createModelAppConfig() {
-  return { ...prebuiltAppConfig, useIndexedDBCache: true };
+export function createModelAppConfig(prebuiltConfig) {
+  return { ...prebuiltConfig, useIndexedDBCache: true };
 }
 
 /**
- * Build a worker URL tied to the installed assistant release.
+ * Retire a model held by an older assistant service worker release.
  *
  * @param {URL} assetBase
- * @param {string} [version]
- * @returns {string}
- */
-export function serviceWorkerScriptUrl(assetBase, version = VERSION) {
-  const scriptUrl = new URL("service-worker.js", assetBase);
-  scriptUrl.searchParams.set("version", version);
-  return scriptUrl.href;
-}
-
-/**
- * Release a model held by the previous assistant worker before replacing it.
- *
- * @param {string} scriptUrl
  * @param {number} timeout
  * @returns {Promise<void>}
  */
-async function unloadPreviousServiceWorker(scriptUrl, timeout) {
-  const controller = navigator.serviceWorker.controller;
-  if (!controller) return;
-  const currentUrl = new URL(controller.scriptURL);
-  const nextUrl = new URL(scriptUrl);
-  if (currentUrl.origin !== nextUrl.origin || currentUrl.pathname !== nextUrl.pathname || currentUrl.href === nextUrl.href) return;
+async function retireAssistantServiceWorker(assetBase, timeout) {
+  if (!("serviceWorker" in navigator)) return;
+  const registration = await navigator.serviceWorker.getRegistration("./");
+  const worker = registration?.active ?? registration?.waiting ?? registration?.installing;
+  if (!registration || !worker) return;
+  const currentUrl = new URL(worker.scriptURL);
+  const assistantUrl = new URL("service-worker.js", assetBase);
+  if (currentUrl.origin !== assistantUrl.origin || currentUrl.pathname !== assistantUrl.pathname) return;
   const requestId = crypto.randomUUID();
   await new Promise((resolve) => {
     const timer = window.setTimeout(finish, timeout);
@@ -100,44 +65,9 @@ async function unloadPreviousServiceWorker(scriptUrl, timeout) {
       if (event.data?.uuid === requestId && (event.data.kind === "return" || event.data.kind === "throw")) finish();
     }
     navigator.serviceWorker.addEventListener("message", receive);
-    controller.postMessage({ kind: "unload", uuid: requestId, content: null });
+    worker.postMessage({ kind: "unload", uuid: requestId, content: null });
   });
-}
-
-/**
- * Ask the active assistant worker whether WebGPU is available in its scope.
- *
- * @param {number} timeout
- * @returns {Promise<boolean>}
- */
-async function serviceWorkerHasWebGpu(timeout) {
-  const controller = navigator.serviceWorker.controller;
-  if (!controller) return false;
-  const requestId = crypto.randomUUID();
-  return new Promise((resolve) => {
-    const timer = window.setTimeout(() => finish(false), timeout);
-    /**
-     * Finish the probe and remove its temporary listener.
-     *
-     * @param {boolean} supported
-     */
-    function finish(supported) {
-      window.clearTimeout(timer);
-      navigator.serviceWorker.removeEventListener("message", receive);
-      resolve(supported);
-    }
-    /**
-     * Accept the matching capability response from the assistant worker.
-     *
-     * @param {MessageEvent} event
-     */
-    function receive(event) {
-      if (event.data?.type !== "smgen-assistant:webgpu-result" || event.data.requestId !== requestId) return;
-      finish(event.data.supported === true);
-    }
-    navigator.serviceWorker.addEventListener("message", receive);
-    controller.postMessage({ type: "smgen-assistant:check-webgpu", requestId });
-  });
+  await registration.unregister();
 }
 
 /**
@@ -226,41 +156,22 @@ async function checkModelSupport(modelId) {
 }
 
 /**
- * Start WebLLM in the scoped service worker or a dedicated worker fallback.
+ * Start WebLLM in a dedicated worker.
  *
  * @param {EngineOptions} options
  * @returns {Promise<MLCEngineInterface>}
  */
 export async function createAssistantEngine(options) {
   await checkModelSupport(options.modelId);
+  const { prebuiltAppConfig, WebWorkerMLCEngine } = await import("@mlc-ai/web-llm");
   const engineConfig = {
     initProgressCallback: options.onProgress,
-    appConfig: createModelAppConfig()
+    appConfig: createModelAppConfig(prebuiltAppConfig)
   };
-  let serviceWorkerReady = false;
-  if (!options.forceDedicatedWorker && "serviceWorker" in navigator && location.protocol !== "file:") {
-    try {
-      const scriptUrl = serviceWorkerScriptUrl(options.assetBase);
-      await unloadPreviousServiceWorker(scriptUrl, 2000);
-      await navigator.serviceWorker.register(scriptUrl, {
-        scope: "./",
-        type: "module",
-        updateViaCache: "none"
-      });
-      await waitForController(scriptUrl, 8000);
-      serviceWorkerReady = await serviceWorkerHasWebGpu(2000);
-    } catch (error) {
-      console.warn("smgen-assistant: service worker engine unavailable; using a dedicated worker", error);
-    }
-  }
-  if (serviceWorkerReady) {
-    const engine = new ServiceWorkerMLCEngine(engineConfig, 5000);
-    try {
-      return await loadModelWithRetry(engine, options.modelId);
-    } catch (error) {
-      await releaseAssistantEngine(engine);
-      throw error;
-    }
+  try {
+    await retireAssistantServiceWorker(options.assetBase, 1500);
+  } catch (error) {
+    console.warn("smgen-assistant: could not retire the previous service worker", error);
   }
   const worker = new Worker(new URL("engine-worker.js", options.assetBase), { type: "module", name: "smgen-assistant" });
   const engine = new WebWorkerMLCEngine(worker, engineConfig);
@@ -291,14 +202,16 @@ export async function streamAnswer(engine, messages, onText, signal) {
     const response = await engine.chat.completions.create({
       messages,
       stream: true,
+      stream_options: { include_usage: true },
       temperature: 0,
+      top_p: 0.8,
       max_tokens: 256,
-      repetition_penalty: 1.1,
-      frequency_penalty: 0.5,
+      frequency_penalty: 0,
       presence_penalty: 0
     });
     for await (const chunk of response) {
       if (signal.aborted) break;
+      if (chunk.usage) console.debug("smgen-assistant: generation performance", chunk.usage);
       const choice = chunk.choices[0];
       const text = choice?.delta.content;
       if (text) {
@@ -306,7 +219,7 @@ export async function streamAnswer(engine, messages, onText, signal) {
         if (remaining > 0) onText(text.slice(0, remaining));
         generatedCharacters += text.length;
         if (generatedCharacters > MAX_RESPONSE_CHARACTERS) {
-          await engine.interruptGenerate();
+          void engine.interruptGenerate();
           return "length";
         }
       }
