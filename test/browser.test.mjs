@@ -330,7 +330,18 @@ test("answer streaming avoids blocking grammar compilation", async () => {
   assert.equal(request?.repetition_penalty, undefined);
   assert.equal(request?.frequency_penalty, 0);
   assert.equal(request?.presence_penalty, 0);
+  assert.deepEqual(request?.extra_body, { enable_thinking: false });
   assert.equal(request?.response_format, undefined);
+});
+
+test("evaluation telemetry requires an explicit frame query", async () => {
+  const source = await readFile(new URL("../src/browser/frame.mjs", import.meta.url), "utf8");
+  assert.match(source, /searchParams\.get\("evaluation"\) === "1"/u);
+  assert.match(source, /smgen-assistant:evaluation-result/u);
+  assert.match(source, /rawAnswer/u);
+  assert.match(source, /retrievedSources/u);
+  assert.match(source, /promptTokens/u);
+  assert.match(source, /generationMs/u);
 });
 
 test("answer streaming interrupts output too large to pass validation", async () => {

@@ -10,6 +10,7 @@ import { renderMarkdown } from "./render.mjs";
 /** @typedef {import('../shared/types.mjs').AssistantModel} AssistantModel */
 /** @typedef {import('../shared/types.mjs').PublicAssistantConfig} PublicAssistantConfig */
 /** @typedef {import('@mlc-ai/web-llm').MLCEngineInterface} MLCEngineInterface */
+/** @typedef {Window & {__smgenEvaluationDeleteModel?: (modelId: string) => Promise<{deletedRecords: number, remainingRecords: number}>}} EvaluationWindow */
 
 /**
  * @typedef {object} SourceLink
@@ -27,6 +28,7 @@ import { renderMarkdown } from "./render.mjs";
  */
 
 const assetBase = new URL("./", import.meta.url);
+const evaluationMode = new URL(location.href).searchParams.get("evaluation") === "1";
 const transcriptKey = `smgen-assistant:transcript:v3:${assetBase.pathname}`;
 const modelKey = `smgen-assistant:model:${assetBase.pathname}`;
 const titleElement = /** @type {HTMLHeadingElement} */ (document.querySelector("#assistant-title"));
@@ -62,6 +64,33 @@ let pageContext = { url: "", title: "" };
 /** @type {TranscriptMessage[]} */
 let transcript = [];
 let maximized = false;
+
+if (evaluationMode) {
+  /** @type {EvaluationWindow} */ (window).__smgenEvaluationDeleteModel = deleteEvaluationModel;
+}
+
+/**
+ * Send structured diagnostics only from an explicitly opened evaluation frame.
+ *
+ * @param {Record<string, unknown>} result
+ */
+function reportEvaluation(result) {
+  if (!evaluationMode) return;
+  window.parent.postMessage({ type: "smgen-assistant:evaluation-result", version: 1, ...result }, location.origin);
+}
+
+/**
+ * Delete a tested model from disk after its isolated evaluation worker closes.
+ *
+ * @param {string} modelId
+ * @returns {Promise<{deletedRecords: number, remainingRecords: number}>}
+ */
+async function deleteEvaluationModel(modelId) {
+  if (!evaluationMode) throw new Error("Model deletion is available only in evaluation mode.");
+  if (engine || generation) throw new Error("Close the model worker before deleting its cached files.");
+  const module = await import("./engine-client.mjs");
+  return module.deleteAssistantModelFromDisk(modelId);
+}
 
 /**
  * Fetch one generated JSON asset from the assistant directory.
@@ -343,6 +372,42 @@ function sourceLinks(chunks) {
 }
 
 /**
+ * Finish an evaluation question immediately when generation cannot complete.
+ *
+ * @param {string} question
+ * @param {number} startedAt
+ * @param {CorpusChunk[]} retrieved
+ * @param {CorpusChunk[]} fitted
+ * @param {unknown} error
+ */
+function reportEvaluationFailure(question, startedAt, retrieved, fitted, error) {
+  const failure = error instanceof Error
+    ? { name: error.name, message: error.message }
+    : { name: "Error", message: String(error) };
+  reportEvaluation({
+    modelId: selectedModel?.id ?? "",
+    question,
+    retrievedSources: sourceLinks(retrieved),
+    fittedSources: sourceLinks(fitted),
+    promptTokens: null,
+    rawAnswer: "",
+    finishReason: null,
+    validation: { ok: false, reason: "generation-error" },
+    fallback: true,
+    displayedAnswer: "",
+    displayedSources: [],
+    usage: null,
+    error: failure,
+    timing: {
+      engineMs: null,
+      generationMs: null,
+      totalMs: Math.round(performance.now() - startedAt),
+      reusedEngine: Boolean(engine)
+    }
+  });
+}
+
+/**
  * Ask the local model one question.
  *
  * @param {string} [suppliedQuestion]
@@ -350,6 +415,7 @@ function sourceLinks(chunks) {
 async function askQuestion(suppliedQuestion) {
   if (!config || !corpus || generation) return;
   const question = (suppliedQuestion ?? questionElement.value).trim();
+  const startedAt = performance.now();
   if (!question) return;
   if (question.length > MAX_QUESTION_CHARACTERS) {
     questionElement.setCustomValidity(`Keep the question under ${MAX_QUESTION_CHARACTERS} characters.`);
@@ -384,10 +450,13 @@ async function askQuestion(suppliedQuestion) {
   }
 
   const activity = activityMessage(engine ? "Preparing sources…" : "Starting the assistant…");
+  const reusedEngine = Boolean(engine);
   generation = new AbortController();
   setWorking(true);
   try {
+    const engineStartedAt = performance.now();
     const activeEngine = await ensureEngine(activity);
+    const engineReadyAt = performance.now();
     if (generation.signal.aborted) throw new DOMException("The answer was stopped.", "AbortError");
     statusElement.textContent = "Preparing answer";
     activity.label.textContent = "Checking the question and sources…";
@@ -402,11 +471,13 @@ async function askQuestion(suppliedQuestion) {
     if (!fitted) {
       activity.article.className = "message assistant error";
       activity.article.textContent = "That question is too long for this model. Shorten it and try again.";
+      reportEvaluationFailure(question, startedAt, retrieved, [], new Error("The prompt did not fit the model context."));
       return;
     }
     if (!fitted.sources.length) {
       activity.article.className = "message assistant";
       activity.article.textContent = "The question fits, but there is not enough room for a documentation passage. Shorten the question and try again.";
+      reportEvaluationFailure(question, startedAt, retrieved, [], new Error("No documentation passage fit the model context."));
       return;
     }
 
@@ -419,10 +490,15 @@ async function askQuestion(suppliedQuestion) {
     activity.label.textContent = "Writing a grounded answer…";
     statusElement.textContent = "Answering";
     liveStatusElement.textContent = "The assistant is answering.";
+    /** @type {{completion_tokens: number, prompt_tokens: number, total_tokens: number, extra: Record<string, unknown>} | null} */
+    let usage = null;
+    const generationStartedAt = performance.now();
     const finishReason = await module.streamAnswer(activeEngine, fitted.messages, (text) => {
       assistantMessage.content += text;
-    }, generation.signal);
+    }, generation.signal, (value) => { usage = value; });
+    const generationFinishedAt = performance.now();
     if (generation.signal.aborted) throw new DOMException("The answer was stopped.", "AbortError");
+    const rawAnswer = assistantMessage.content;
     const grounding = formatGeneratedAnswer(assistantMessage.content, fitted.sources, finishReason);
     if (!grounding.ok) {
       console.warn("smgen-assistant: rejected ungrounded answer", grounding);
@@ -443,7 +519,28 @@ async function askQuestion(suppliedQuestion) {
     transcript.push({ role: "user", content: question }, assistantMessage);
     transcript = transcript.slice(-20);
     storeTranscript();
+    reportEvaluation({
+      modelId: selectedModel?.id ?? "",
+      question,
+      retrievedSources: sourceLinks(retrieved),
+      fittedSources: sourceLinks(fitted.sources),
+      promptTokens: fitted.promptTokens,
+      rawAnswer,
+      finishReason,
+      validation: grounding.ok ? { ok: true, filtered: grounding.filtered } : grounding,
+      fallback: !grounding.ok,
+      displayedAnswer: assistantMessage.content,
+      displayedSources: assistantMessage.sources ?? [],
+      usage,
+      timing: {
+        engineMs: Math.round(engineReadyAt - engineStartedAt),
+        generationMs: Math.round(generationFinishedAt - generationStartedAt),
+        totalMs: Math.round(performance.now() - startedAt),
+        reusedEngine
+      }
+    });
   } catch (error) {
+    reportEvaluationFailure(question, startedAt, retrieved, [], error);
     if (error instanceof DOMException && error.name === "AbortError") {
       activity.article.className = "message assistant";
       activity.article.textContent = "Answer stopped.";

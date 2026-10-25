@@ -33,6 +33,139 @@ export function createModelAppConfig(prebuiltConfig) {
 }
 
 /**
+ * Normalize a model repository URL the same way WebLLM addresses its artifacts.
+ *
+ * @param {string} modelUrl
+ * @returns {string}
+ */
+function cleanModelUrl(modelUrl) {
+  let normalized = modelUrl.endsWith("/") ? modelUrl : `${modelUrl}/`;
+  if (!/.+\/resolve\/.+\//u.test(normalized)) normalized += "resolve/main/";
+  return new URL(normalized).href;
+}
+
+/**
+ * Delete matching URL records from one WebLLM IndexedDB artifact store.
+ *
+ * @param {string} databaseName
+ * @param {(url: string) => boolean} matches
+ * @returns {Promise<number>}
+ */
+async function deleteIndexedDbArtifacts(databaseName, matches) {
+  const databases = await indexedDB.databases();
+  if (!databases.some(({ name }) => name === databaseName)) return 0;
+  const database = await new Promise((resolve, reject) => {
+    const request = indexedDB.open(databaseName);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error ?? new Error(`Could not open ${databaseName}.`));
+  });
+  const typedDatabase = /** @type {IDBDatabase} */ (database);
+  if (!typedDatabase.objectStoreNames.contains("urls")) {
+    typedDatabase.close();
+    return 0;
+  }
+  try {
+    return await new Promise((resolve, reject) => {
+      let deleted = 0;
+      const transaction = typedDatabase.transaction("urls", "readwrite");
+      const request = transaction.objectStore("urls").openCursor();
+      transaction.oncomplete = () => resolve(deleted);
+      transaction.onerror = () => reject(transaction.error ?? new Error(`Could not clean ${databaseName}.`));
+      request.onerror = () => reject(request.error ?? new Error(`Could not inspect ${databaseName}.`));
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) return;
+        const value = /** @type {{url?: unknown}} */ (cursor.value);
+        if (typeof value.url === "string" && matches(value.url)) {
+          cursor.delete();
+          deleted += 1;
+        }
+        cursor.continue();
+      };
+    });
+  } finally {
+    typedDatabase.close();
+  }
+}
+
+/**
+ * Count matching URL records in one WebLLM IndexedDB artifact store.
+ *
+ * @param {string} databaseName
+ * @param {(url: string) => boolean} matches
+ * @returns {Promise<number>}
+ */
+async function countIndexedDbArtifacts(databaseName, matches) {
+  const databases = await indexedDB.databases();
+  if (!databases.some(({ name }) => name === databaseName)) return 0;
+  const database = await new Promise((resolve, reject) => {
+    const request = indexedDB.open(databaseName);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error ?? new Error(`Could not open ${databaseName}.`));
+  });
+  const typedDatabase = /** @type {IDBDatabase} */ (database);
+  if (!typedDatabase.objectStoreNames.contains("urls")) {
+    typedDatabase.close();
+    return 0;
+  }
+  try {
+    return await new Promise((resolve, reject) => {
+      let count = 0;
+      const transaction = typedDatabase.transaction("urls", "readonly");
+      const request = transaction.objectStore("urls").openCursor();
+      transaction.oncomplete = () => resolve(count);
+      transaction.onerror = () => reject(transaction.error ?? new Error(`Could not inspect ${databaseName}.`));
+      request.onerror = () => reject(request.error ?? new Error(`Could not inspect ${databaseName}.`));
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) return;
+        const value = /** @type {{url?: unknown}} */ (cursor.value);
+        if (typeof value.url === "string" && matches(value.url)) count += 1;
+        cursor.continue();
+      };
+    });
+  } finally {
+    typedDatabase.close();
+  }
+}
+
+/**
+ * Remove one model's weights, tokenizer, configuration, and WebAssembly artifact from disk.
+ *
+ * @param {string} modelId
+ * @returns {Promise<{deletedRecords: number, remainingRecords: number}>}
+ */
+export async function deleteAssistantModelFromDisk(modelId) {
+  const { deleteModelAllInfoInCache, prebuiltAppConfig } = await import("@mlc-ai/web-llm");
+  const appConfig = createModelAppConfig(prebuiltAppConfig);
+  const records = /** @type {Array<{model_id: string, model: string, model_lib: string}>} */ (appConfig.model_list);
+  const record = records.find(({ model_id: candidate }) => candidate === modelId);
+  if (!record) throw new Error(`WebLLM does not recognize model ${modelId}.`);
+  const modelUrl = cleanModelUrl(record.model);
+  /** Report whether an IndexedDB key belongs to the selected model repository. */
+  const matchesModel = (/** @type {string} */ url) => url.startsWith(modelUrl);
+  /** Report whether an IndexedDB key is the selected model's WebAssembly module. */
+  const matchesWasm = (/** @type {string} */ url) => url === record.model_lib;
+  await deleteModelAllInfoInCache(modelId, appConfig);
+  const deleted = await Promise.all([
+    deleteIndexedDbArtifacts("webllm/model", matchesModel),
+    deleteIndexedDbArtifacts("webllm/config", matchesModel),
+    deleteIndexedDbArtifacts("webllm/wasm", matchesWasm)
+  ]);
+  const remaining = await Promise.all([
+    countIndexedDbArtifacts("webllm/model", matchesModel),
+    countIndexedDbArtifacts("webllm/config", matchesModel),
+    countIndexedDbArtifacts("webllm/wasm", matchesWasm)
+  ]);
+  const remainingRecords = remaining.reduce((total, count) => total + count, 0);
+  if (remainingRecords) throw new Error(`${remainingRecords} cached records remain for ${modelId}.`);
+  return {
+    deletedRecords: deleted.reduce((total, count) => total + count, 0),
+    remainingRecords
+  };
+}
+
+/**
  * Retire a model held by an older assistant service worker release.
  *
  * @param {URL} assetBase
@@ -190,9 +323,10 @@ export async function createAssistantEngine(options) {
  * @param {Array<{role: "system" | "user" | "assistant", content: string}>} messages
  * @param {(text: string) => void} onText
  * @param {AbortSignal} signal
+ * @param {(usage: {completion_tokens: number, prompt_tokens: number, total_tokens: number, extra: Record<string, unknown>}) => void} [onUsage]
  * @returns {Promise<string | null>}
  */
-export async function streamAnswer(engine, messages, onText, signal) {
+export async function streamAnswer(engine, messages, onText, signal, onUsage) {
   /** Stop the active WebLLM generation request. */
   const stop = () => { void engine.interruptGenerate(); };
   signal.addEventListener("abort", stop, { once: true });
@@ -207,11 +341,15 @@ export async function streamAnswer(engine, messages, onText, signal) {
       top_p: 0.8,
       max_tokens: 256,
       frequency_penalty: 0,
-      presence_penalty: 0
+      presence_penalty: 0,
+      extra_body: { enable_thinking: false }
     });
     for await (const chunk of response) {
       if (signal.aborted) break;
-      if (chunk.usage) console.debug("smgen-assistant: generation performance", chunk.usage);
+      if (chunk.usage) {
+        console.debug("smgen-assistant: generation performance", chunk.usage);
+        onUsage?.(chunk.usage);
+      }
       const choice = chunk.choices[0];
       const text = choice?.delta.content;
       if (text) {

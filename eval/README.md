@@ -9,6 +9,31 @@ in one conversation changes retrieval by adding follow-up context and makes the
 results harder to compare. Run each `conversationSequences` case in one
 conversation because those cases intentionally test follow-up handling.
 
+For a reproducible browser run, build the assistant with every candidate in its
+`models` list, open Chrome with remote debugging, and run:
+
+```sh
+npm run eval -- \
+  --models model-a,model-b \
+  --scenarios create-first-site,select-menu-pages,deploy-github-pages \
+  --variants first \
+  --sequences false \
+  --output /tmp/smgen-assistant-eval.json
+
+node eval/summarize.mjs /tmp/smgen-assistant-eval.json
+```
+
+The runner opens `frame.html?evaluation=1`. Only that explicit mode reports the
+retrieved and fitted sources, raw generation, validation result, displayed
+answer, token usage, and timing to the same-origin test page. Ordinary embedded
+frames do not emit question or answer telemetry.
+
+Each model runs in a separate page and dedicated worker. After its cases finish,
+the runner closes that page, removes the model weights, tokenizer, configuration,
+and WebAssembly artifact from IndexedDB, and verifies that no matching records
+remain before opening the next model. This keeps both GPU memory and disk use to
+one evaluated model at a time.
+
 For every answer, record:
 
 - whether at least one listed source section was retrieved

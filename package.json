@@ -34,6 +34,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "clean": "node scripts/build.mjs --clean",
+    "eval": "node eval/run.mjs",
     "lint": "eslint .",
     "test": "npm run build && node --test test/*.test.mjs",
     "typecheck": "tsc --noEmit",
@@ -50,6 +51,7 @@
     "esbuild": "0.28.2",
     "eslint": "10.13.0",
     "eslint-plugin-jsdoc": "65.4.2",
+    "playwright-core": "1.59.1",
     "typescript": "7.0.2"
   }
 }
