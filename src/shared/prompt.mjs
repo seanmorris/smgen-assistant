@@ -12,10 +12,12 @@ export const MAX_QUESTION_CHARACTERS = 2000;
 const INSTRUCTIONS = `Use only the numbered documentation sources below.
 Never add a fact from memory. Copy commands, filenames, configuration keys, and literal values exactly from the cited source.
 Prefer earlier sources. Use a later source only when it adds a fact that directly answers the question.
-Select only the most useful facts. Do not write a complete guide or exhaust the sources.`;
+Cover every part of the question before adding supporting detail. When more than one source is supplied, include at least one fact from each source.
+Select only the most useful facts. Do not enumerate settings or examples unless the question asks for them. Do not write a complete guide or exhaust the sources.`;
 
 const OUTPUT_INSTRUCTIONS = `Answer the question directly with one to four short Markdown bullets and no more than 90 words total.
 Paraphrase the sources naturally. Do not infer a step, prerequisite, or purpose that the sources do not state.
+Use one bullet for each requested action or decision before adding detail.
 Begin each bullet with a hyphen and write a complete sentence. Keep each bullet within one source.
 Put commands, filenames, configuration keys, and literal values in backticks.
 Do not write citations or source labels; the interface adds them after validation.
@@ -53,9 +55,10 @@ export function promptMessages(question, sources, previousQuestion = "") {
  * @param {string} question
  * @param {CorpusChunk} source
  * @param {(messages: Array<{role: "system" | "user" | "assistant", content: string}>) => Promise<number>} countTokens
+ * @param {CorpusChunk[]} [earlierSources]
  * @returns {Promise<CorpusChunk | null>}
  */
-async function truncateSource(question, source, countTokens) {
+async function truncateSource(question, source, countTokens, earlierSources = []) {
   let low = 0;
   let high = source.content.length;
   let fitted = -1;
@@ -65,7 +68,7 @@ async function truncateSource(question, source, countTokens) {
       ? `${source.content.slice(0, Math.max(0, middle - 1)).trimEnd()}…`
       : source.content;
     const candidate = { ...source, content };
-    if (await countTokens(promptMessages(question, [candidate])) <= MAX_PROMPT_TOKENS) {
+    if (await countTokens(promptMessages(question, [...earlierSources, candidate])) <= MAX_PROMPT_TOKENS) {
       fitted = middle;
       low = middle + 1;
     } else {
@@ -101,11 +104,23 @@ export async function fitPrompt(question, sources, previousQuestion, countTokens
     if (promptTokens <= MAX_PROMPT_TOKENS) return { messages, sources: selected, promptTokens };
   }
 
-  while (selected.length > 1) {
+  while (selected.length > 2) {
     selected = selected.slice(0, -1);
     messages = promptMessages(question, selected);
     promptTokens = await countTokens(messages);
     if (promptTokens <= MAX_PROMPT_TOKENS) return { messages, sources: selected, promptTokens };
+  }
+
+  if (selected.length === 2 && selected[0] && selected[1]) {
+    const first = selected[0];
+    const second = await truncateSource(question, selected[1], countTokens, [first]);
+    if (second && second.content.length >= 80) {
+      selected = [first, second];
+      messages = promptMessages(question, selected);
+      promptTokens = await countTokens(messages);
+      if (promptTokens <= MAX_PROMPT_TOKENS) return { messages, sources: selected, promptTokens };
+    }
+    selected = [first];
   }
 
   if (selected[0]) {

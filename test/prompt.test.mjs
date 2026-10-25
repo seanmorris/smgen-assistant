@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { fitPrompt, MAX_OUTPUT_TOKENS, MAX_PROMPT_TOKENS, promptMessages, questionUsesPreviousContext } from "../src/shared/prompt.mjs";
 
+/** @type {import("../src/shared/types.mjs").CorpusChunk[]} */
 const sources = [
   { id: "1", sourceId: "a", title: "Start", heading: "Create a Site", url: "/index.html#create-a-site", content: "Build instructions. ".repeat(55) },
   { id: "2", sourceId: "b", title: "Config", heading: "Settings", url: "/configuration.html#settings", content: "Configuration details. ".repeat(55) }
@@ -23,8 +24,11 @@ test("prompt instructions require faithful cited paraphrases", () => {
   assert.match(messages[0]?.content ?? "", /Use only the numbered documentation sources/iu);
   assert.match(messages[0]?.content ?? "", /Copy commands, filenames, configuration keys/iu);
   assert.match(messages[0]?.content ?? "", /Prefer earlier sources/iu);
+  assert.match(messages[0]?.content ?? "", /Cover every part of the question/iu);
+  assert.match(messages[0]?.content ?? "", /one fact from each source/iu);
   assert.match(messages.at(-1)?.content ?? "", /Answer the question directly with one to four short Markdown bullets/iu);
   assert.match(messages.at(-1)?.content ?? "", /no more than 90 words total/iu);
+  assert.match(messages.at(-1)?.content ?? "", /one bullet for each requested action or decision/iu);
   assert.match(messages.at(-1)?.content ?? "", /interface adds them after validation/iu);
   assert.match(messages.at(-1)?.content ?? "", /Do not infer a step, prerequisite, or purpose/iu);
   assert.match(messages.at(-1)?.content ?? "", /^Question: How do I build\?/u);
@@ -44,6 +48,19 @@ test("prompt fitting drops old context and low-ranked sources", async () => {
   assert.ok((fitted?.sources.length ?? 0) >= 1);
   assert.ok((fitted?.sources.length ?? Infinity) < sources.length);
   assert.equal(fitted?.messages.some((message) => message.role === "assistant"), false);
+});
+
+test("prompt fitting trims a second relevant passage before dropping it", async () => {
+  /** @type {import("../src/shared/types.mjs").CorpusChunk} */
+  const primary = { id: "1", sourceId: "a", title: "Start", heading: "Create a Site", url: "/index.html#create-a-site", content: "Primary instructions. ".repeat(5) };
+  /** @type {import("../src/shared/types.mjs").CorpusChunk} */
+  const secondary = { id: "2", sourceId: "b", title: "Config", heading: "Settings", url: "/configuration.html#settings", content: "Secondary configuration. ".repeat(100) };
+  const fitted = await fitPrompt("How do I configure both parts?", [primary, secondary], "", countCharacters);
+  assert.ok(fitted);
+  assert.equal(fitted?.sources.length, 2);
+  assert.equal(fitted?.sources[0]?.content, primary.content);
+  assert.match(fitted?.sources[1]?.content ?? "", /…$/u);
+  assert.ok((fitted?.promptTokens ?? Infinity) <= MAX_PROMPT_TOKENS);
 });
 
 test("prompt fitting rejects a question that cannot fit by itself", async () => {

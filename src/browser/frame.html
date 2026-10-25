@@ -25,6 +25,10 @@
     <p id="live-status" class="visually-hidden" role="status" aria-live="polite"></p>
 
     <form id="question-form" class="composer">
+      <div id="model-choice" class="model-choice" hidden>
+        <label for="model-select">Model</label>
+        <select id="model-select"></select>
+      </div>
       <label class="visually-hidden" for="question">Question about this site</label>
       <textarea id="question" rows="2" maxlength="2000" required disabled placeholder="Ask about this site"></textarea>
       <div class="composer-meta">

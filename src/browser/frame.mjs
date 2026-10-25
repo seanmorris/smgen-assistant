@@ -1,12 +1,13 @@
 // @ts-check
 
 import { retrieveChunks } from "../shared/retrieval.mjs";
-import { formatExtractiveAnswer, formatGeneratedAnswer } from "../shared/grounding.mjs";
+import { formatExtractiveAnswerSet, formatGeneratedAnswer } from "../shared/grounding.mjs";
 import { fitPrompt, MAX_QUESTION_CHARACTERS, questionUsesPreviousContext } from "../shared/prompt.mjs";
 import { renderMarkdown } from "./render.mjs";
 
 /** @typedef {import('../shared/types.mjs').Corpus} Corpus */
 /** @typedef {import('../shared/types.mjs').CorpusChunk} CorpusChunk */
+/** @typedef {import('../shared/types.mjs').AssistantModel} AssistantModel */
 /** @typedef {import('../shared/types.mjs').PublicAssistantConfig} PublicAssistantConfig */
 /** @typedef {import('@mlc-ai/web-llm').MLCEngineInterface} MLCEngineInterface */
 
@@ -27,6 +28,7 @@ import { renderMarkdown } from "./render.mjs";
 
 const assetBase = new URL("./", import.meta.url);
 const transcriptKey = `smgen-assistant:transcript:v3:${assetBase.pathname}`;
+const modelKey = `smgen-assistant:model:${assetBase.pathname}`;
 const titleElement = /** @type {HTMLHeadingElement} */ (document.querySelector("#assistant-title"));
 const statusElement = /** @type {HTMLParagraphElement} */ (document.querySelector("#status"));
 const liveStatusElement = /** @type {HTMLParagraphElement} */ (document.querySelector("#live-status"));
@@ -34,6 +36,8 @@ const modelNoteElement = /** @type {HTMLSpanElement} */ (document.querySelector(
 const characterCountElement = /** @type {HTMLSpanElement} */ (document.querySelector("#character-count"));
 const messagesElement = /** @type {HTMLElement} */ (document.querySelector("#messages"));
 const form = /** @type {HTMLFormElement} */ (document.querySelector("#question-form"));
+const modelChoiceElement = /** @type {HTMLDivElement} */ (document.querySelector("#model-choice"));
+const modelSelectElement = /** @type {HTMLSelectElement} */ (document.querySelector("#model-select"));
 const questionElement = /** @type {HTMLTextAreaElement} */ (document.querySelector("#question"));
 const submitButton = /** @type {HTMLButtonElement} */ (document.querySelector("#submit"));
 const cancelButton = /** @type {HTMLButtonElement} */ (document.querySelector("#cancel"));
@@ -45,6 +49,10 @@ const closeButton = /** @type {HTMLButtonElement} */ (document.querySelector("#c
 let corpus = null;
 /** @type {PublicAssistantConfig | null} */
 let config = null;
+/** @type {AssistantModel[]} */
+let models = [];
+/** @type {AssistantModel | null} */
+let selectedModel = null;
 /** @type {MLCEngineInterface | null} */
 let engine = null;
 /** @type {AbortController | null} */
@@ -222,7 +230,45 @@ function showRetry(article, question, message) {
 function setWorking(working) {
   questionElement.disabled = working || !config || !("gpu" in navigator);
   submitButton.disabled = working || !config || !("gpu" in navigator);
+  modelSelectElement.disabled = working || !config || !("gpu" in navigator);
   cancelButton.hidden = !generation;
+}
+
+/**
+ * Describe the selected model without claiming estimates the site did not set.
+ *
+ * @param {AssistantModel} model
+ * @param {boolean} [ready]
+ */
+function modelNote(model, ready = false) {
+  if (ready) return `${model.label} runs privately in this browser.`;
+  const estimates = [];
+  if (model.downloadMB) estimates.push(`${model.downloadMB.toLocaleString()} MB download`);
+  if (model.memoryMB) estimates.push(`${model.memoryMB.toLocaleString()} MB GPU memory`);
+  return estimates.length
+    ? `${model.label}, about ${estimates.join(" and ")}.`
+    : `${model.label} downloads on first use.`;
+}
+
+/** Populate the model picker and restore a valid earlier selection. */
+function configureModelPicker() {
+  if (!config) return;
+  models = Array.isArray(config.models) && config.models.length ? config.models : [config.model];
+  let stored = "";
+  try {
+    stored = localStorage.getItem(modelKey) ?? "";
+  } catch {}
+  selectedModel = models.find(({ id }) => id === stored) ?? models[0] ?? null;
+  modelSelectElement.replaceChildren();
+  for (const model of models) {
+    const option = document.createElement("option");
+    option.value = model.id;
+    option.textContent = model.downloadMB ? `${model.label} (${model.downloadMB.toLocaleString()} MB)` : model.label;
+    modelSelectElement.append(option);
+  }
+  modelSelectElement.value = selectedModel?.id ?? "";
+  modelChoiceElement.hidden = models.length < 2;
+  if (selectedModel) modelNoteElement.textContent = modelNote(selectedModel);
 }
 
 /**
@@ -232,21 +278,49 @@ function setWorking(working) {
  */
 async function ensureEngine(activity) {
   if (engine) return engine;
-  if (!config) throw new Error("Assistant configuration has not loaded.");
+  if (!config || !selectedModel) throw new Error("Assistant configuration has not loaded.");
   statusElement.textContent = "Downloading model";
   liveStatusElement.textContent = "Downloading the assistant model.";
-  modelNoteElement.textContent = `${config.model.label}, about ${config.model.downloadMB} MB. Cached after the first run.`;
+  modelNoteElement.textContent = `${modelNote(selectedModel)} Cached after the first run.`;
   const module = await import("./engine-client.mjs");
   engine = await module.createAssistantEngine({
-    modelId: config.model.id,
+    modelId: selectedModel.id,
     assetBase,
     onProgress: (report) => {
       activity.progress.value = Math.max(0, Math.min(1, report.progress));
       activity.label.textContent = report.text || "Downloading model…";
     }
   });
-  modelNoteElement.textContent = "Runs privately in this browser.";
+  modelNoteElement.textContent = modelNote(selectedModel, true);
   return engine;
+}
+
+/** Release the active engine and defer loading the newly selected model. */
+async function changeModel() {
+  if (!config || generation) return;
+  const nextModel = models.find(({ id }) => id === modelSelectElement.value);
+  if (!nextModel || nextModel.id === selectedModel?.id) return;
+  setWorking(true);
+  const previousEngine = engine;
+  engine = null;
+  try {
+    if (previousEngine) {
+      const module = await import("./engine-client.mjs");
+      await module.releaseAssistantEngine(previousEngine);
+    }
+  } catch (error) {
+    console.warn("smgen-assistant: previous model did not release cleanly", error);
+  } finally {
+    selectedModel = nextModel;
+    try {
+      localStorage.setItem(modelKey, nextModel.id);
+    } catch {}
+    modelNoteElement.textContent = modelNote(nextModel);
+    statusElement.textContent = "Starts with your first question";
+    liveStatusElement.textContent = `${nextModel.label} selected.`;
+    setWorking(false);
+    questionElement.focus();
+  }
 }
 
 /**
@@ -352,13 +426,13 @@ async function askQuestion(suppliedQuestion) {
     const grounding = formatGeneratedAnswer(assistantMessage.content, fitted.sources, finishReason);
     if (!grounding.ok) {
       console.warn("smgen-assistant: rejected ungrounded answer", grounding);
-      const best = fitted.sources[0];
-      const extracted = best ? formatExtractiveAnswer(best) : "";
-      assistantMessage.content = extracted || (best
+      const extracted = formatExtractiveAnswerSet(fitted.sources);
+      const best = extracted.sources[0];
+      assistantMessage.content = extracted.answer || (best
         ? `See **${best.heading || best.title}** for the closest matching documentation. [Source 1]`
         : "Try a more specific term from the documentation.");
-      assistantMessage.sources = best ? sourceLinks([best]) : [];
-      if (best) assistantMessage.excerpt = best.content;
+      assistantMessage.sources = sourceLinks(extracted.sources);
+      if (best) assistantMessage.excerpt = extracted.sources.map((source) => source.content).join("\n\n");
     } else {
       assistantMessage.content = grounding.answer;
       assistantMessage.sources = sourceLinks(grounding.sources);
@@ -383,7 +457,9 @@ async function askQuestion(suppliedQuestion) {
         const failedEngine = engine;
         engine = null;
         if (failedEngine) await module.releaseAssistantEngine(failedEngine);
-        modelNoteElement.textContent = "The model will restart when you try again.";
+        modelNoteElement.textContent = selectedModel
+          ? `${selectedModel.label} will restart when you try again.`
+          : "The model will restart when you try again.";
         showRetry(activity.article, question, "The model stopped before it could answer.");
       }
     }
@@ -424,6 +500,7 @@ questionElement.addEventListener("keydown", (event) => {
 });
 cancelButton.addEventListener("click", () => generation?.abort());
 newChatButton.addEventListener("click", () => void newChat());
+modelSelectElement.addEventListener("change", () => void changeModel());
 maximizeButton.addEventListener("click", () => window.parent.postMessage({ type: "smgen-assistant:toggle-maximize" }, location.origin));
 closeButton.addEventListener("click", () => window.parent.postMessage({ type: "smgen-assistant:close" }, location.origin));
 window.addEventListener("keydown", (event) => {
@@ -456,6 +533,7 @@ async function start() {
     config = loadedConfig;
     corpus = loadedCorpus;
     titleElement.textContent = loadedConfig.title;
+    configureModelPicker();
     restoreTranscript();
     renderTranscript();
     if (!("gpu" in navigator)) {
@@ -463,7 +541,7 @@ async function start() {
       modelNoteElement.textContent = "This browser does not provide WebGPU.";
     } else {
       statusElement.textContent = "Starts with your first question";
-      modelNoteElement.textContent = `${loadedConfig.model.label}, about ${loadedConfig.model.downloadMB} MB on first use.`;
+      if (selectedModel) modelNoteElement.textContent = modelNote(selectedModel);
       questionElement.disabled = false;
       submitButton.disabled = false;
     }

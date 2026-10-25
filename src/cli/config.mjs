@@ -5,6 +5,7 @@ import path from "node:path";
 import { parse as parseYaml } from "yaml";
 
 /** @typedef {import('../shared/types.mjs').PublicAssistantConfig} PublicAssistantConfig */
+/** @typedef {import('../shared/types.mjs').AssistantModel} AssistantModel */
 
 export const DEFAULT_CONFIG = /** @type {const} */ ({
   title: "Ask this site",
@@ -16,7 +17,7 @@ export const DEFAULT_CONFIG = /** @type {const} */ ({
     memoryMB: 1061
   },
   retrieval: {
-    maxChunks: 4,
+    maxChunks: 2,
     maxCharacters: 3000
   },
   chunkCharacters: 4000
@@ -99,6 +100,77 @@ function optionalPositiveInteger(value, name, fallback) {
 }
 
 /**
+ * Validate an optional positive integer without inventing an estimate.
+ *
+ * @param {unknown} value
+ * @param {string} name
+ * @returns {number | undefined}
+ */
+function optionalModelMetric(value, name) {
+  if (value === undefined) return undefined;
+  if (!Number.isSafeInteger(value) || /** @type {number} */ (value) <= 0) {
+    throw new Error(`${name} must be a positive integer`);
+  }
+  return /** @type {number} */ (value);
+}
+
+/**
+ * Validate one WebLLM model choice.
+ *
+ * @param {unknown} value
+ * @param {string} name
+ * @param {AssistantModel | undefined} [fallback]
+ * @returns {AssistantModel}
+ */
+function modelOption(value, name, fallback) {
+  if (value === undefined && fallback) return { ...fallback };
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${name} must be a mapping`);
+  }
+  const model = /** @type {Record<string, unknown>} */ (value);
+  const id = model.id === undefined
+    ? fallback?.id
+    : optionalString(model.id, `${name}.id`, fallback?.id ?? "");
+  if (!id) throw new Error(`${name}.id must be a nonempty string`);
+  const usesFallback = id === fallback?.id;
+  const label = optionalString(model.label, `${name}.label`, usesFallback ? (fallback?.label ?? id) : id);
+  const downloadMB = model.downloadMB === undefined && usesFallback
+    ? fallback?.downloadMB
+    : optionalModelMetric(model.downloadMB, `${name}.downloadMB`);
+  const memoryMB = model.memoryMB === undefined && usesFallback
+    ? fallback?.memoryMB
+    : optionalModelMetric(model.memoryMB, `${name}.memoryMB`);
+  return {
+    id,
+    label,
+    ...(downloadMB === undefined ? {} : { downloadMB }),
+    ...(memoryMB === undefined ? {} : { memoryMB })
+  };
+}
+
+/**
+ * Normalize the legacy single model and the selectable model list.
+ *
+ * @param {Record<string, unknown>} fileConfig
+ * @returns {AssistantModel[]}
+ */
+function modelOptions(fileConfig) {
+  if (fileConfig.models !== undefined && fileConfig.model !== undefined) {
+    throw new Error("configure either model or models, not both");
+  }
+  if (fileConfig.models !== undefined) {
+    if (!Array.isArray(fileConfig.models) || fileConfig.models.length === 0) {
+      throw new Error("models must be a nonempty sequence");
+    }
+    const models = fileConfig.models.map((value, index) => modelOption(value, `models[${index}]`));
+    const ids = new Set(models.map(({ id }) => id));
+    if (ids.size !== models.length) throw new Error("models must not contain duplicate IDs");
+    return models;
+  }
+  return [modelOption(fileConfig.model, "model", DEFAULT_CONFIG.model)];
+}
+
+/**
  * Parse the YAML configuration file as a top-level mapping.
  *
  * @param {string} filename
@@ -151,7 +223,8 @@ export async function parseBuildOptions(argv, environment = process.env, cwd = p
     } catch {}
   }
   const fileConfig = configPath ? await readConfigFile(configPath) : {};
-  const model = objectValue(fileConfig.model);
+  const models = modelOptions(fileConfig);
+  const model = /** @type {AssistantModel} */ (models[0]);
   const retrieval = objectValue(fileConfig.retrieval);
   const pagesValue = flags["--pages"] ?? fileConfig.pages ?? "./pages";
   const outputValue = flags["--output"] ?? fileConfig.output ?? "./docs";
@@ -172,12 +245,8 @@ export async function parseBuildOptions(argv, environment = process.env, cwd = p
         version: 1,
         title: optionalString(fileConfig.title, "title", DEFAULT_CONFIG.title),
         greeting: optionalString(fileConfig.greeting, "greeting", DEFAULT_CONFIG.greeting),
-        model: {
-          id: optionalString(model.id, "model.id", DEFAULT_CONFIG.model.id),
-          label: optionalString(model.label, "model.label", DEFAULT_CONFIG.model.label),
-          downloadMB: optionalPositiveInteger(model.downloadMB, "model.downloadMB", DEFAULT_CONFIG.model.downloadMB),
-          memoryMB: optionalPositiveInteger(model.memoryMB, "model.memoryMB", DEFAULT_CONFIG.model.memoryMB)
-        },
+        model,
+        models,
         retrieval: {
           maxChunks: optionalPositiveInteger(retrieval.maxChunks, "retrieval.maxChunks", DEFAULT_CONFIG.retrieval.maxChunks),
           maxCharacters: optionalPositiveInteger(retrieval.maxCharacters, "retrieval.maxCharacters", DEFAULT_CONFIG.retrieval.maxCharacters)

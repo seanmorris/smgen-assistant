@@ -25,11 +25,20 @@
  */
 
 /**
+ * @typedef {object} AssistantModel
+ * @property {string} id
+ * @property {string} label
+ * @property {number} [downloadMB]
+ * @property {number} [memoryMB]
+ */
+
+/**
  * @typedef {object} PublicAssistantConfig
  * @property {1} version
  * @property {string} title
  * @property {string} greeting
- * @property {{id: string, label: string, downloadMB: number, memoryMB: number}} model
+ * @property {AssistantModel} model
+ * @property {AssistantModel[]} models
  * @property {{maxChunks: number, maxCharacters: number}} retrieval
  */
 

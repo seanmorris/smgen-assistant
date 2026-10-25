@@ -11,7 +11,7 @@ test("the default model matches the documented Qwen build", () => {
   assert.equal(DEFAULT_CONFIG.model.id, "Qwen2.5-Coder-0.5B-Instruct-q4f32_1-MLC");
   assert.equal(DEFAULT_CONFIG.model.downloadMB, 300);
   assert.equal(DEFAULT_CONFIG.model.memoryMB, 1061);
-  assert.deepEqual(DEFAULT_CONFIG.retrieval, { maxChunks: 4, maxCharacters: 3000 });
+  assert.deepEqual(DEFAULT_CONFIG.retrieval, { maxChunks: 2, maxCharacters: 3000 });
 });
 
 test("normalizeBaseUrl accepts empty and nested site paths", () => {
@@ -42,7 +42,46 @@ test("command flags override YAML and environment defaults", async () => {
     assert.equal(parsed.config.baseUrl, "/from-flag");
     assert.equal(parsed.config.publicConfig.title, "Project help");
     assert.equal(parsed.config.publicConfig.model.label, "Small model");
+    assert.deepEqual(parsed.config.publicConfig.models, [parsed.config.publicConfig.model]);
     assert.equal(parsed.config.publicConfig.retrieval.maxChunks, 4);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("a model list preserves order and optional resource estimates", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "smgen-assistant-models-"));
+  try {
+    await writeFile(path.join(directory, ".smgen-assistant.yaml"), [
+      "models:",
+      "  - id: small-model",
+      "    label: Small",
+      "    downloadMB: 300",
+      "    memoryMB: 1000",
+      "  - id: larger-model",
+      "",
+    ].join("\n"));
+    const parsed = await parseBuildOptions(["build"], {}, directory);
+    assert.equal(parsed.help, false);
+    if (parsed.help) return;
+    assert.deepEqual(parsed.config.publicConfig.models, [
+      { id: "small-model", label: "Small", downloadMB: 300, memoryMB: 1000 },
+      { id: "larger-model", label: "larger-model" }
+    ]);
+    assert.deepEqual(parsed.config.publicConfig.model, parsed.config.publicConfig.models[0]);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("model configuration rejects ambiguous and duplicate choices", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "smgen-assistant-model-errors-"));
+  try {
+    const filename = path.join(directory, ".smgen-assistant.yaml");
+    await writeFile(filename, "model: {}\nmodels: []\n");
+    await assert.rejects(parseBuildOptions(["build"], {}, directory), /either model or models/u);
+    await writeFile(filename, "models:\n  - id: same\n  - id: same\n");
+    await assert.rejects(parseBuildOptions(["build"], {}, directory), /duplicate IDs/u);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

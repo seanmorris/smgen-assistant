@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatExtractiveAnswer, formatGeneratedAnswer, formatGroundedAnswer, formatGroundedMarkdown, validateGroundedAnswer } from "../src/shared/grounding.mjs";
+import { formatExtractiveAnswer, formatExtractiveAnswerSet, formatGeneratedAnswer, formatGroundedAnswer, formatGroundedMarkdown, validateGroundedAnswer } from "../src/shared/grounding.mjs";
 
 const sources = [{
   id: "1",
@@ -95,6 +95,16 @@ test("generated prose drops unsupported claims while keeping grounded bullets", 
     answer: "- Initialize the site with `smgen init`. [Source 1]",
     sources,
     filtered: true
+  });
+});
+
+test("generated prose rejects an answer that ignores a supplied passage", () => {
+  const primary = sources[0];
+  assert.ok(primary);
+  const other = { ...primary, id: "2", sourceId: "menus", content: "Use `menus` in page frontmatter." };
+  assert.deepEqual(formatGeneratedAnswer("- Initialize the site with `smgen init`.", [primary, other], "stop"), {
+    ok: false,
+    reason: "incomplete-sources"
   });
 });
 
@@ -208,7 +218,7 @@ test("extractive fallback adds short command blocks to concise prose", () => {
   assert.ok(baseSource);
   const source = {
     ...baseSource,
-    content: "Initialize an empty directory:\n\n```bash\nmkdir my-site\ncd my-site\n```\n\nSet the site identity in `.smgen-rc`:\n\nBuild and serve the site."
+    content: "Initialize an empty directory:\n\n```bash\nmkdir my-site\ncd my-site\n```\n\n…\n\nSet the site identity in `.smgen-rc`:\n\nBuild and serve the site."
   };
   assert.equal(formatExtractiveAnswer(source), [
     "- Initialize an empty directory: `mkdir my-site`, `cd my-site` [Source 1]",
@@ -216,4 +226,19 @@ test("extractive fallback adds short command blocks to concise prose", () => {
     "- Build and serve the site. [Source 1]"
   ].join("\n"));
   assert.deepEqual(validateGroundedAnswer(formatExtractiveAnswer(source), [source], "stop"), { ok: true });
+});
+
+test("extractive fallback balances multiple sources and skips image markers", () => {
+  /** @type {import("../src/shared/types.mjs").CorpusChunk} */
+  const first = { id: "1", sourceId: "deploy", title: "Deployment", heading: "Actions", url: "/deployment.html#actions", content: "Configure GitHub Actions.\n\n![Screenshot](/actions.png)\n\nUpload `docs/` as the artifact." };
+  /** @type {import("../src/shared/types.mjs").CorpusChunk} */
+  const second = { id: "2", sourceId: "url", title: "Deployment", heading: "Public URL", url: "/deployment.html#url", content: "Set `BASE_URL` before the build.\n\nUse the public site root." };
+  const extracted = formatExtractiveAnswerSet([first, second]);
+  assert.deepEqual(extracted.sources, [first, second]);
+  assert.equal(extracted.answer, [
+    "- Configure GitHub Actions. [Source 1]",
+    "- Upload `docs/` as the artifact. [Source 1]",
+    "- Set `BASE_URL` before the build. [Source 2]",
+    "- Use the public site root. [Source 2]"
+  ].join("\n"));
 });

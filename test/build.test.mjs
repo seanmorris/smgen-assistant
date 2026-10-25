@@ -25,6 +25,7 @@ test("build replaces only the reserved assistant directory", async () => {
       title: "Ask",
       greeting: "Hello",
       model: { id: "test-model", label: "Test", downloadMB: 1, memoryMB: 1 },
+      models: [{ id: "test-model", label: "Test", downloadMB: 1, memoryMB: 1 }],
       retrieval: { maxChunks: 2, maxCharacters: 1000 }
     };
     const first = await buildSiteAssistant({ pages, output, baseUrl: "/docs", configPath: undefined, chunkCharacters: 4000, publicConfig });
@@ -52,7 +53,7 @@ test("build rejects overlapping pages and output directories", async () => {
       baseUrl: "",
       configPath: undefined,
       chunkCharacters: 4000,
-      publicConfig: { version: 1, title: "Ask", greeting: "Hi", model: { id: "x", label: "x", downloadMB: 1, memoryMB: 1 }, retrieval: { maxChunks: 1, maxCharacters: 10 } }
+      publicConfig: { version: 1, title: "Ask", greeting: "Hi", model: { id: "x", label: "x", downloadMB: 1, memoryMB: 1 }, models: [{ id: "x", label: "x", downloadMB: 1, memoryMB: 1 }], retrieval: { maxChunks: 1, maxCharacters: 10 } }
     }), /must not overlap/u);
   } finally {
     await rm(root, { recursive: true, force: true });

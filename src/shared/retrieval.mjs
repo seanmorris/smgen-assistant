@@ -17,6 +17,7 @@ const RELATED_TERMS = new Map([
   ["websites", ["site"]],
   ["setup", ["install", "configure"]]
 ]);
+const MAX_SOURCE_CHARACTERS = 800;
 
 /**
  * Normalize text for case-insensitive local matching.
@@ -129,10 +130,16 @@ function scoreChunk(chunk, query, terms, currentUrl) {
   if (/\b(?:add|another|create|custom|make|new).*(?:menu|navigation)\b/u.test(exact) && /define menus and regions$/u.test(heading)) {
     score += 48;
   }
+  if (/(?:\b(?:choose|select)\b.*\bpages?\b|\bpages?\b.*\b(?:belong|membership|opt (?:in|out))\b)/u.test(exact) && /select menus from pages$/u.test(heading)) {
+    score += 80;
+  }
+  if (/\b(?:add|another|create|custom|make|new).*(?:menu|navigation)\b/u.test(exact) && /(?:\b(?:choose|select)\b.*\bpages?\b|\bpages?\b.*\b(?:belong|membership|opt (?:in|out))\b)/u.test(exact) && /define menus and regions$/u.test(heading)) {
+    score += 80;
+  }
   if (/\b(?:css|javascript|stylesheet|scripts?|static)\b/u.test(exact) && /\b(?:add|custom|load|own|publish|watch)\b/u.test(exact) && /add styles and scripts$/u.test(heading)) {
     score += 64;
   }
-  if (/(?:\bbase_url\b|\bsubdirectory\b.*\blinks?\b)/u.test(exact) && /set the public url$/u.test(heading)) {
+  if (/(?:\bbase_url\b|\bsubdirectory\b.*\b(?:build|deploy|github pages|links?|public)\b)/u.test(exact) && /set the public url$/u.test(heading)) {
     score += 72;
   }
   if (/\b(?:override|beats?|wins?|precedence|order)\b/u.test(exact) && /\b(?:config(?:uration)?|environment|shell|yaml)\b/u.test(exact) && /precedence$/u.test(heading)) {
@@ -166,16 +173,76 @@ function weightedTerms(chunks, queryTerms) {
 }
 
 /**
+ * Split Markdown into paragraphs without splitting fenced code blocks.
+ *
+ * @param {string} content
+ */
+function contentBlocks(content) {
+  /** @type {string[][]} */
+  const blocks = [];
+  /** @type {string[]} */
+  let current = [];
+  let fence = "";
+  for (const line of content.split("\n")) {
+    const marker = line.match(/^\s*(`{3,}|~{3,})/u)?.[1] ?? "";
+    if (!fence && !line.trim()) {
+      if (current.length) blocks.push(current);
+      current = [];
+      continue;
+    }
+    current.push(line);
+    if (!marker) continue;
+    if (!fence) fence = marker;
+    else if (marker.startsWith(fence[0] ?? "")) fence = "";
+  }
+  if (current.length) blocks.push(current);
+  return blocks.map((lines) => lines.join("\n").trim()).filter(Boolean);
+}
+
+/**
+ * Keep the summary and query-relevant paragraphs from a long source passage.
+ *
+ * @param {CorpusChunk} chunk
+ * @param {Array<{value: string, weight: number}>} terms
+ */
+function focusChunk(chunk, terms) {
+  if (chunk.content.length <= MAX_SOURCE_CHARACTERS) return chunk;
+  const blocks = contentBlocks(chunk.content);
+  if (blocks.length < 2) {
+    return { ...chunk, content: `${chunk.content.slice(0, MAX_SOURCE_CHARACTERS - 1).trimEnd()}…` };
+  }
+  const ranked = blocks.map((block, index) => ({
+    block,
+    index,
+    score: terms.reduce((score, term) => score + occurrences(normalized(block), term.value) * term.weight, index === 0 ? 4 : 0)
+  })).sort((a, b) => b.score - a.score || a.index - b.index);
+  const selected = new Set([0]);
+  let characters = blocks[0]?.length ?? 0;
+  for (const candidate of ranked) {
+    if (selected.has(candidate.index)) continue;
+    if (candidate.block.length < 40 && /:\s*$/u.test(candidate.block)) continue;
+    const separator = selected.size ? 5 : 0;
+    if (characters + separator + candidate.block.length > MAX_SOURCE_CHARACTERS) continue;
+    selected.add(candidate.index);
+    characters += separator + candidate.block.length;
+  }
+  const content = blocks.filter((_block, index) => selected.has(index)).join("\n\n");
+  return { ...chunk, content };
+}
+
+/**
  * Report whether one strong passage should answer a narrowly phrased task.
  *
  * @param {string} query
  */
 function focusedQuery(query) {
   const value = normalized(query);
-  return /\bgithub pages\b/u.test(value)
+  const asksForMenuMembership = /(?:\b(?:choose|select)\b.*\bpages?\b|\bpages?\b.*\b(?:belong|membership|opt (?:in|out))\b)/u.test(value);
+  const asksForPublicUrl = /\b(?:base_url|public url|subdirectory)\b/u.test(value);
+  return (/\bgithub pages\b/u.test(value) && !asksForPublicUrl)
     || /\b(?:empty|new) (?:directory|folder)\b/u.test(value)
     || /\b(?:where|which).*(?:put|store|write).*(?:content|page|pages|words)\b/u.test(value)
-    || /\b(?:add|another|create|custom|make|new).*(?:menu|navigation)\b/u.test(value)
+    || (/\b(?:add|another|create|custom|make|new).*(?:menu|navigation)\b/u.test(value) && !asksForMenuMembership)
     || /\bwhat (?:does|is) (?:smgen|this)\b/u.test(value);
 }
 
@@ -240,7 +307,7 @@ export function retrieveChunks(chunks, query, options) {
     }
     const [item] = remaining.splice(index, 1);
     if (!item) break;
-    const fitted = fitCandidate(selected, item.chunk, options.maxCharacters);
+    const fitted = fitCandidate(selected, focusChunk(item.chunk, terms), options.maxCharacters);
     if (!fitted) continue;
     selected.push(fitted);
     sources.add(item.chunk.sourceId);

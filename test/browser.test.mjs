@@ -189,6 +189,16 @@ test("assistant colors use the theme supplied by the host page", async () => {
   assert.match(frameSource, /smgen-assistant:theme-applied/u);
 });
 
+test("multiple configured models use a persistent deferred picker", async () => {
+  const frameSource = await readFile(new URL("../src/browser/frame.mjs", import.meta.url), "utf8");
+  const frameHtml = await readFile(new URL("../src/browser/frame.html", import.meta.url), "utf8");
+  assert.match(frameHtml, /<select id="model-select"><\/select>/u);
+  assert.match(frameSource, /models\.length < 2/u);
+  assert.match(frameSource, /localStorage\.setItem\(modelKey, nextModel\.id\)/u);
+  assert.match(frameSource, /await module\.releaseAssistantEngine\(previousEngine\)/u);
+  assert.match(frameSource, /modelId: selectedModel\.id/u);
+});
+
 test("prompt counting uses the loaded tokenizer and conversation template", () => {
   class FakeConversation {
     /** @param {unknown} config */

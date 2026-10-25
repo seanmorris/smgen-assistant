@@ -74,7 +74,11 @@ export function formatExtractiveAnswer(source) {
       if (expanded.length <= 240) return [expanded];
       return cleaned.match(/[^.!?]+[.!?](?:\s|$)/gu)?.map((sentence) => sentence.trim()) ?? [];
     });
-  }).filter((block) => block && block.length <= 240 && !/^#{1,6}\s/u.test(block));
+  }).filter((block) => block
+    && block !== "…"
+    && block.length <= 240
+    && !/^#{1,6}\s/u.test(block)
+    && !/^!\[[^\]]*\]\([^)]*\)$/u.test(block));
   /** @type {string[]} */
   const selected = [];
   let characters = 0;
@@ -84,6 +88,28 @@ export function formatExtractiveAnswer(source) {
     characters += block.length;
   }
   return selected.map((block) => `- ${block} [Source 1]`).join("\n");
+}
+
+/**
+ * Build a balanced extractive fallback across the supplied passages.
+ *
+ * @param {CorpusChunk[]} sources
+ * @returns {{answer: string, sources: CorpusChunk[]}}
+ */
+export function formatExtractiveAnswerSet(sources) {
+  const candidates = sources.slice(0, 4);
+  const perSource = Math.max(1, Math.floor(4 / Math.max(1, candidates.length)));
+  /** @type {string[]} */
+  const bullets = [];
+  /** @type {CorpusChunk[]} */
+  const selected = [];
+  for (const source of candidates) {
+    const extracted = formatExtractiveAnswer(source).split("\n").filter(Boolean).slice(0, perSource);
+    if (!extracted.length) continue;
+    const sourceNumber = selected.push(source);
+    bullets.push(...extracted.map((bullet) => bullet.replace(/\[Source 1\]/gu, `[Source ${sourceNumber}]`)));
+  }
+  return { answer: bullets.slice(0, 4).join("\n"), sources: selected };
 }
 
 /**
@@ -274,6 +300,9 @@ export function formatGeneratedAnswer(answer, sources, _finishReason) {
   }
   if (!matched.length) return { ok: false, reason: "unsupported-content" };
   const used = [...new Set(matched.map((item) => item.source))];
+  if (sources.length > 1 && used.length < sources.length) {
+    return { ok: false, reason: "incomplete-sources" };
+  }
   const selected = used.map((index) => sources[index]).filter((source) => source !== undefined);
   const markdown = matched.map((item) => `- ${item.content} [Source ${used.indexOf(item.source) + 1}]`).join("\n");
   return { ok: true, answer: markdown, sources: selected, filtered: matched.length < rawBlocks.length };

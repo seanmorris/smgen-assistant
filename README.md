@@ -87,18 +87,35 @@ title: Ask the manual
 greeting: Ask a question about this project.
 chunkCharacters: 4000
 
-model:
-  id: Qwen2.5-Coder-0.5B-Instruct-q4f32_1-MLC
-  label: Qwen2.5 Coder 0.5B
-  downloadMB: 300
-  memoryMB: 1061
+models:
+  - id: Qwen2.5-Coder-0.5B-Instruct-q4f32_1-MLC
+    label: Qwen2.5 Coder 0.5B
+    downloadMB: 300
+    memoryMB: 1061
+  - id: Qwen2.5-1.5B-Instruct-q4f32_1-MLC
+    label: Qwen2.5 1.5B
+    downloadMB: 880
+    memoryMB: 1889
 
 retrieval:
-  maxChunks: 4
+  maxChunks: 2
   maxCharacters: 3000
 ```
 
-The model ID must exist in the model list included with WebLLM 0.2.79. Models with `f16` in their quantization name require a WebGPU adapter with `shader-f16`. The assistant checks WebLLM's required adapter limits before loading a model. WebGPU does not report available VRAM, so choose a model with a conservative `memoryMB` estimate. The size fields inform the visitor before download; they do not constrain WebLLM.
+The first entry is the initial choice. When `models` contains more than one
+entry, the visitor can select one before asking a question. Changing the choice
+releases the active engine and defers the new download until the next question.
+The choice persists for that assistant URL, and WebLLM caches each downloaded
+model separately.
+
+Use `model` with one mapping when the site should offer only one choice. This
+older form remains supported. Model IDs must exist in the model list included
+with WebLLM 0.2.81. Models with `f16` in their quantization name require a
+WebGPU adapter with `shader-f16`. The assistant checks WebLLM's required adapter
+limits before loading a model. WebGPU does not report available VRAM, so choose
+a model with a conservative `memoryMB` estimate. `downloadMB` and `memoryMB`
+inform the visitor; they do not constrain WebLLM. Omit either estimate when it
+is unknown.
 
 The configuration file can also supply `pages`, `output`, and `baseUrl`. Command flags override file settings. `BASE_URL` from the environment applies when neither the flag nor the file sets it.
 
@@ -115,11 +132,11 @@ smgen-assistant build [options]
 
 The builder strips YAML frontmatter and splits Markdown at headings. It keeps fenced code blocks intact. Each chunk records a stable source ID, title, heading, and public URL.
 
-The browser ranks chunks with exact phrase, title, heading, technical identifier, body, term rarity, and current-page matches. It favors useful passages from more than one page. Each retrieval receives at most `retrieval.maxChunks` chunks and `retrieval.maxCharacters` formatted characters.
+The browser ranks chunks with exact phrase, title, heading, technical identifier, body, term rarity, and current-page matches. It favors useful passages from more than one page, then keeps the summary and query-relevant paragraphs from long passages. Each retrieval receives at most `retrieval.maxChunks` chunks and `retrieval.maxCharacters` formatted characters. The default is two chunks so small models can distinguish the strongest passages.
 
 The prompt asks the model to rephrase only the selected passages in one to four short bullets and preserve commands and configuration values. It tells the model to favor the highest-ranked passages and avoid inferred steps. The browser matches each bullet to its supporting passage and adds a citation that links to the exact documented section. Referential follow-up questions receive the latest earlier question as context. The assistant never sends prior model answers back to the model.
 
-The frame holds generated text until it can check the complete answer. It validates the cited Markdown without compiling a grammar in the visitor's browser. It rejects an answer that stops at the token limit, repeats itself, cites an unknown source, loses contact with the cited topic, or introduces a technical literal absent from the cited passage. Ordinary prose can use different wording. If validation fails, it extracts a few exact lines and their short command blocks from the strongest passage, then links them to that section. The complete passage remains available in a folded panel.
+The frame holds generated text until it can check the complete answer. It validates the cited Markdown without compiling a grammar in the visitor's browser. It rejects an answer that stops at the token limit, repeats itself, ignores a supplied passage, loses contact with the cited topic, or introduces a technical literal absent from the cited passage. Ordinary prose can use different wording. If validation fails, it extracts a few exact lines and their short command blocks across the supplied passages, then links them to those sections. The complete excerpts remain available in a folded panel.
 
 The browser loads the full corpus when the visitor opens the assistant. A few megabytes of source Markdown fits this design. A corpus measured in tens of megabytes should use a partitioned index so the browser can fetch candidates on demand.
 

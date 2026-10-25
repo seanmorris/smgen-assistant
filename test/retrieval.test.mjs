@@ -33,6 +33,27 @@ test("retrieval enforces the character and result budgets", () => {
   assert.match(selected[0]?.content ?? "", /…$/u);
 });
 
+test("retrieval focuses long passages on relevant paragraphs", () => {
+  const long = {
+    id: "long",
+    sourceId: "guide",
+    title: "Guide",
+    heading: "Configure Widgets",
+    url: "/guide.html#widgets",
+    content: [
+      "Widgets use the site configuration.",
+      "Unrelated background. ".repeat(50),
+      "Set `WIDGET_COLOR` to configure the widget color.",
+      "More unrelated detail. ".repeat(50)
+    ].join("\n\n")
+  };
+  const [selected] = retrieveChunks([long], "How do I configure WIDGET_COLOR?", { maxChunks: 1, maxCharacters: 2000 });
+  assert.match(selected?.content ?? "", /Widgets use the site configuration/u);
+  assert.match(selected?.content ?? "", /WIDGET_COLOR/u);
+  assert.doesNotMatch(selected?.content ?? "", /More unrelated detail/u);
+  assert.ok((selected?.content.length ?? Infinity) <= 800);
+});
+
 test("retrieval does not return an unrelated current page", () => {
   const selected = retrieveChunks(chunks, "xyzzynotfound", {
     maxChunks: 2,
@@ -152,4 +173,20 @@ test("retrieval routes varied project-maintenance language", () => {
   assert.equal(first("What should BASE_URL contain for a production build?"), "public");
   assert.equal(first("Where should I put a local override that beats the project YAML?"), "precedence");
   assert.equal(first("Will leftBarLink still work if I start adding named menus?"), "legacy");
+});
+
+test("compound questions retain passages for each requested task", () => {
+  const pages = [
+    { id: "define", sourceId: "navigation", title: "Navigation", heading: "Navigation > Define Menus and Regions", url: "/navigation.html#define-menus-and-regions", content: "Define a menu under MENUS and place it in MENU_REGIONS.sidebar." },
+    { id: "membership", sourceId: "navigation", title: "Navigation", heading: "Navigation > Select Menus from Pages", url: "/navigation.html#select-menus-from-pages", content: "Use menus in page frontmatter to join a named menu." },
+    { id: "actions", sourceId: "deployment", title: "Deployment", heading: "Deployment > GitHub Pages with Actions", url: "/deployment.html#github-pages-with-actions", content: "An Actions deployment builds the site and uploads docs/." },
+    { id: "public", sourceId: "deployment", title: "Deployment", heading: "Deployment > Set the Public URL", url: "/deployment.html#set-the-public-url", content: "Set BASE_URL to the public root before a production build." }
+  ];
+  const options = { maxChunks: 4, maxCharacters: 3000 };
+  const menuIds = retrieveChunks(pages, "How do I add a second sidebar menu and choose which pages belong to it?", options).map(({ id }) => id);
+  assert.ok(menuIds.includes("define"));
+  assert.ok(menuIds.includes("membership"));
+  const deploymentIds = retrieveChunks(pages, "My site will live under a subdirectory on GitHub Pages. What should the build and deployment do?", options).map(({ id }) => id);
+  assert.ok(deploymentIds.includes("actions"));
+  assert.ok(deploymentIds.includes("public"));
 });
