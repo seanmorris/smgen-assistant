@@ -134,12 +134,17 @@ export function renderMarkdown(container, markdown, sources = [], doc = document
           }
           break;
         }
+        const content = item[3] ?? "";
+        if (/^(?:`{3,}|~{3,})[.!]?(?:\s+\[Source \d+\])?\s*$/u.test(content)) {
+          index += 1;
+          continue;
+        }
         const child = doc.createElement("li");
-        appendInline(child, item[3] ?? "", sources, doc);
+        appendInline(child, content, sources, doc);
         element.append(child);
         index += 1;
       }
-      container.append(element);
+      if (element.children.length) container.append(element);
       continue;
     }
     const quote = line.match(/^\s*>\s?(.*)$/u);

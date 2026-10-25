@@ -361,6 +361,9 @@ export function validateGroundedAnswer(answer, sources, finishReason) {
   if (blocks.length > 4 || answer.trim().split(/\s+/u).length > 120) {
     return { ok: false, reason: "too-long" };
   }
+  if (blocks.some((block) => /(?:`{3,}|~{3,})/u.test(block))) {
+    return { ok: false, reason: "unsupported-content" };
+  }
   if (blocks.some((block) => block.length > 20 && !/\[Source \d+\]/u.test(block))) {
     return { ok: false, reason: "missing-block-citation" };
   }
@@ -423,7 +426,11 @@ export function formatGeneratedAnswer(answer, sources, _finishReason, question =
       .replace(/^\s*(?:[-*+]|\d+\.)\s*/u, "")
       .replace(/\s*\[Source \d+\]\s*/gu, "")
       .trim();
-    if (!normalized || normalized.length > 280 || /^#{1,6}\s/u.test(normalized) || /<\/?[a-z][a-z\d-]*(?:\s[^>]*)?>/iu.test(normalized)) {
+    if (!normalized
+      || normalized.length > 280
+      || /^#{1,6}\s/u.test(normalized)
+      || /(?:`{3,}|~{3,})/u.test(normalized)
+      || /<\/?[a-z][a-z\d-]*(?:\s[^>]*)?>/iu.test(normalized)) {
       if (blockIndex === 0) return { ok: false, reason: "unsupported-content" };
       continue;
     }

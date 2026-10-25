@@ -119,6 +119,42 @@ test("generated prose drops unsupported claims while keeping grounded bullets", 
   });
 });
 
+test("generated prose drops a stray Markdown fence instead of rendering it as a bullet", () => {
+  const baseSource = sources[0];
+  assert.ok(baseSource);
+  const source = {
+    ...baseSource,
+    content: [
+      "Answer-form annotations identify whether a passage answers what or how.",
+      "",
+      "```markdown",
+      "<!-- <what> -->",
+      "A widget is a named group of links.",
+      "<!-- </what> -->",
+      "```",
+      "",
+      "The builder removes annotations before sending source text to the model."
+    ].join("\n")
+  };
+  assert.deepEqual(formatGeneratedAnswer([
+    "- Answer-form annotations identify whether a passage answers what or how.",
+    "- The builder removes annotations before sending source text to the model.",
+    "- ```"
+  ].join("\n"), [source], "stop"), {
+    ok: true,
+    answer: [
+      "- Answer-form annotations identify whether a passage answers what or how. [Source 1]",
+      "- The builder removes annotations before sending source text to the model. [Source 1]"
+    ].join("\n"),
+    sources: [source],
+    filtered: true
+  });
+  assert.deepEqual(validateGroundedAnswer("- ```. [Source 1]", [source], "stop"), {
+    ok: false,
+    reason: "unsupported-content"
+  });
+});
+
 test("generated prose ignores a supplied passage that does not help the answer", () => {
   const primary = sources[0];
   assert.ok(primary);

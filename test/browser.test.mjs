@@ -294,6 +294,23 @@ test("documentation citations link to exact source fragments", () => {
   assert.equal(links.length, 1);
 });
 
+test("rendered answers hide a stray Markdown fence saved by an older release", () => {
+  const container = new FakeElement("article");
+  const doc = /** @type {Document} */ (/** @type {unknown} */ ({
+    createElement: (/** @type {string} */ tag) => new FakeElement(tag),
+    createTextNode: (/** @type {string} */ value) => ({ tagName: "#TEXT", textContent: value })
+  }));
+  renderMarkdown(
+    /** @type {HTMLElement} */ (/** @type {unknown} */ (container)),
+    "- A grounded answer. [Source 1]\n- ```. [Source 1]",
+    [{ url: "/guide.html#answer" }],
+    doc
+  );
+  const list = /** @type {FakeElement} */ (container.children[0]);
+  assert.equal(list.tagName, "UL");
+  assert.equal(list.children.length, 1);
+});
+
 test("assistant messages do not inherit the root grid layout", async () => {
   const css = await readFile(new URL("../src/styles/assistant.css", import.meta.url), "utf8");
   assert.match(css, /main\.assistant\s*\{[^}]*display:\s*grid/su);
