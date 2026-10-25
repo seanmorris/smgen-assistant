@@ -86,17 +86,24 @@ async function ask(page, question) {
  */
 async function openEvaluationPage(context, url) {
   const page = await context.newPage();
-  await page.addInitScript(() => {
-    window.__smgenEvaluationResults = [];
-    window.addEventListener("message", (event) => {
-      if (event.origin === location.origin && event.data?.type === "smgen-assistant:evaluation-result") {
-        window.__smgenEvaluationResults.push(event.data);
-      }
+  try {
+    await page.addInitScript(() => {
+      window.__smgenEvaluationResults = [];
+      window.addEventListener("message", (event) => {
+        if (event.origin === location.origin && event.data?.type === "smgen-assistant:evaluation-result") {
+          window.__smgenEvaluationResults.push(event.data);
+        }
+      });
     });
-  });
-  await page.goto(url, { waitUntil: "domcontentloaded" });
-  await page.locator("#question:not([disabled])").waitFor({ timeout: 30_000 });
-  return page;
+    await page.goto(url, { waitUntil: "domcontentloaded" });
+    await page.locator("#question:not([disabled])").waitFor({ timeout: 30_000 });
+    const hasCleanupHook = await page.evaluate(() => typeof window.__smgenEvaluationDeleteModel === "function");
+    if (!hasCleanupHook) throw new Error("The generated assistant lacks the current evaluation cleanup hook. Rebuild its bundle before running the evaluator.");
+    return page;
+  } catch (error) {
+    await page.close();
+    throw error;
+  }
 }
 
 /**

@@ -51,7 +51,58 @@ test("retrieval focuses long passages on relevant paragraphs", () => {
   assert.match(selected?.content ?? "", /Widgets use the site configuration/u);
   assert.match(selected?.content ?? "", /WIDGET_COLOR/u);
   assert.doesNotMatch(selected?.content ?? "", /More unrelated detail/u);
-  assert.ok((selected?.content.length ?? Infinity) <= 800);
+  assert.ok((selected?.content.length ?? Infinity) <= 1200);
+});
+
+test("retrieval keeps list introductions and explicitly requested asset details", () => {
+  const timeline = {
+    id: "timeline",
+    sourceId: "navigation",
+    title: "Navigation",
+    heading: "Timeline Menus",
+    url: "/navigation.html#timeline-menus",
+    content: [
+      "A timeline renders:",
+      "- a linked calendar\n- expandable year and month groups",
+      "Background about archive history. ".repeat(30),
+      "SMGen chooses dates in this order:",
+      "1. `date`\n2. `created`\n3. filesystem birth time\n4. first Git addition time\n5. filesystem modification time",
+      "Timeline markup uses native `details`. It adds no JavaScript and links `archive.css` only for a populated timeline."
+    ].join("\n\n")
+  };
+  const [selected] = retrieveChunks([timeline], "How does the calendar group years and months, which dates does it use, and which browser assets load?", {
+    maxChunks: 2,
+    maxCharacters: 3000
+  });
+  assert.match(selected?.content ?? "", /A timeline renders:\n\n- a linked calendar/u);
+  assert.match(selected?.content ?? "", /chooses dates in this order:\n\n1\. `date`/u);
+  assert.match(selected?.content ?? "", /no JavaScript.*`archive\.css`/u);
+  assert.doesNotMatch(selected?.content ?? "", /Background about archive history/u);
+});
+
+test("retrieval keeps selector prose beside plugin YAML", () => {
+  const plugins = {
+    id: "plugins",
+    sourceId: "navigation",
+    title: "Navigation",
+    heading: "Menu Plugins",
+    url: "/navigation.html#menu-plugins",
+    content: [
+      "List plugin manifests:",
+      "```yaml\nPLUGINS:\n  - plugins/guides/smgen.plugin.yaml\n```",
+      "A plugin manifest can select pages:",
+      "```yaml\nselectors:\n  - include: [\"guides/**/*.md\"]\n    exclude: [\"guides/drafts/**\"]\n    where:\n      audience: public\n```",
+      "A selector supports:",
+      "- `include`: source-relative globs.\n- `exclude`: removed globs.\n- `where`: exact frontmatter matches.\n- `defaults`: selected-page link settings.",
+      "Unrelated plugin callback detail. ".repeat(40)
+    ].join("\n\n")
+  };
+  const [selected] = retrieveChunks([plugins], "How can a plugin select pages with include, exclude, and where rules?", {
+    maxChunks: 1,
+    maxCharacters: 3000
+  });
+  assert.match(selected?.content ?? "", /A plugin manifest can select pages:\n\n```yaml/u);
+  assert.match(selected?.content ?? "", /A selector supports:\n\n- `include`.*- `where`/su);
 });
 
 test("retrieval does not return an unrelated current page", () => {

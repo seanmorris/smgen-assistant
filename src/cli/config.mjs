@@ -11,10 +11,10 @@ export const DEFAULT_CONFIG = /** @type {const} */ ({
   title: "Ask this site",
   greeting: "Ask a question about this documentation.",
   model: {
-    id: "Qwen2.5-Coder-0.5B-Instruct-q4f32_1-MLC",
-    label: "Qwen2.5 Coder 0.5B",
-    downloadMB: 300,
-    memoryMB: 1061
+    id: "Qwen2.5-1.5B-Instruct-q4f32_1-MLC",
+    label: "Qwen2.5 1.5B",
+    downloadMB: 880,
+    memoryMB: 1889
   },
   retrieval: {
     maxChunks: 2,

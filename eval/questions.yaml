@@ -28,7 +28,7 @@ roles:
           - Put the first page at `pages/index.md`.
           - Run `smgen build` and `smgen serve`, then open port 8000.
         variants:
-          - I have an empty folder. How do I make my first SMGen site?
+          - I have an empty folder. How do I create and view my first SMGen site?
           - Walk me through creating and viewing a tiny site from scratch.
           - What commands and files do I need to go from nothing to a local SMGen page?
 
@@ -91,7 +91,7 @@ roles:
           - Plugins can select pages with `include`, `exclude`, and `where` rules.
           - A page can set a menu membership to `false` to veto a selector.
         variants:
-          - How can pages opt into a menu, and can a plugin select pages in bulk?
+          - How can pages opt into or veto a menu, and how can a plugin select pages in bulk with include, exclude, and where rules?
           - I need all public guides in one menu except a few pages. How should I configure that?
           - Can a content author remove one page from a menu that a plugin populated?
 

@@ -7,6 +7,8 @@ const LOW_VALUE_TERMS = new Set([
   "a", "an", "and", "are", "do", "does", "explain", "for", "how", "i", "in", "is", "it", "me", "of", "on", "smgen", "tell", "the", "thing", "this", "through", "to", "use", "walk", "what", "why", "with", "would", "you", "your"
 ]);
 const RELATED_TERMS = new Map([
+  ["assets", ["css", "javascript", "script", "stylesheet"]],
+  ["browser", ["css", "javascript", "script", "stylesheet"]],
   ["does", ["converts", "coordinates", "renders"]],
   ["make", ["create"]],
   ["making", ["create"]],
@@ -17,7 +19,7 @@ const RELATED_TERMS = new Map([
   ["websites", ["site"]],
   ["setup", ["install", "configure"]]
 ]);
-const MAX_SOURCE_CHARACTERS = 800;
+const MAX_SOURCE_CHARACTERS = 1200;
 
 /**
  * Normalize text for case-insensitive local matching.
@@ -208,7 +210,23 @@ function contentBlocks(content) {
     else if (marker.startsWith(fence[0] ?? "")) fence = "";
   }
   if (current.length) blocks.push(current);
-  return blocks.map((lines) => lines.join("\n").trim()).filter(Boolean);
+  const paragraphs = blocks.map((lines) => lines.join("\n").trim()).filter(Boolean);
+  /** @type {string[]} */
+  const structured = [];
+  for (let index = 0; index < paragraphs.length; index += 1) {
+    const paragraph = paragraphs[index];
+    if (!paragraph) continue;
+    const next = paragraphs[index + 1] ?? "";
+    const introducesStructure = /:\s*$/u.test(paragraph)
+      && (/^(?:[-*+]|\d+\.)\s+/mu.test(next) || /^\s*(?:`{3,}|~{3,})/u.test(next));
+    if (introducesStructure) {
+      structured.push(`${paragraph}\n\n${next}`);
+      index += 1;
+    } else {
+      structured.push(paragraph);
+    }
+  }
+  return structured;
 }
 
 /**
@@ -232,7 +250,6 @@ function focusChunk(chunk, terms) {
   let characters = blocks[0]?.length ?? 0;
   for (const candidate of ranked) {
     if (selected.has(candidate.index)) continue;
-    if (candidate.block.length < 40 && /:\s*$/u.test(candidate.block)) continue;
     const separator = selected.size ? 5 : 0;
     if (characters + separator + candidate.block.length > MAX_SOURCE_CHARACTERS) continue;
     selected.add(candidate.index);

@@ -1,3 +1,3 @@
 // @ts-check
 
-export const VERSION = "0.1.17";
+export const VERSION = "0.1.18";

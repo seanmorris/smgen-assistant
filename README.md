@@ -8,7 +8,7 @@ The initial page loads one small script. The assistant frame, corpus, WebLLM run
 
 The build requires Node.js 20 or newer. Visitors need a browser with WebGPU.
 
-The default model is `Qwen2.5-Coder-0.5B-Instruct-q4f32_1-MLC`. Its current estimate is a 300 MB download and 1,061 MB of GPU memory. The f32 build works on WebGPU adapters without the optional `shader-f16` feature. The package pins the WebLLM 0.2.81 runtime used by the WebLLM Chat example. WebLLM stores model artifacts in IndexedDB to avoid Cache API failures on redirected model shards.
+The default model is `Qwen2.5-1.5B-Instruct-q4f32_1-MLC`. Its current estimate is an 880 MB download and 1,889 MB of GPU memory. The f32 build works on WebGPU adapters without the optional `shader-f16` feature. The package pins the WebLLM 0.2.81 runtime used by the WebLLM Chat example. WebLLM stores model artifacts in IndexedDB to avoid Cache API failures on redirected model shards.
 
 The browser loads a 2,048-token context and reserves 384 tokens for each answer. Before generation, the model's loaded tokenizer verifies that the complete prompt uses no more than 1,664 tokens. The assistant removes old question context, lower-ranked passages, and excess text from the last passage in that order. A question that still does not fit receives an inline validation message without unloading the model.
 
@@ -88,14 +88,14 @@ greeting: Ask a question about this project.
 chunkCharacters: 4000
 
 models:
-  - id: Qwen2.5-Coder-0.5B-Instruct-q4f32_1-MLC
-    label: Qwen2.5 Coder 0.5B
-    downloadMB: 300
-    memoryMB: 1061
   - id: Qwen2.5-1.5B-Instruct-q4f32_1-MLC
-    label: Qwen2.5 1.5B
+    label: Qwen2.5 1.5B · Faster
     downloadMB: 880
     memoryMB: 1889
+  - id: gemma-2-2b-it-q4f32_1-MLC
+    label: Gemma 2 2B · Stronger
+    downloadMB: 1400
+    memoryMB: 2509
 
 retrieval:
   maxChunks: 2
@@ -136,7 +136,7 @@ The browser ranks chunks with exact phrase, title, heading, technical identifier
 
 The prompt asks the model to rephrase only the selected passages in one to four short bullets and preserve commands and configuration values. It tells the model to favor the highest-ranked passages and avoid inferred steps. The browser matches each bullet to its supporting passage and adds a citation that links to the exact documented section. Referential follow-up questions receive the latest earlier question as context. The assistant never sends prior model answers back to the model.
 
-The frame holds generated text until it can check the complete answer. It validates the cited Markdown without compiling a grammar in the visitor's browser. It rejects an answer that stops at the token limit, repeats itself, ignores a supplied passage, loses contact with the cited topic, or introduces a technical literal absent from the cited passage. Ordinary prose can use different wording. If validation fails, it extracts a few exact lines and their short command blocks across the supplied passages, then links them to those sections. The complete excerpts remain available in a folded panel.
+The frame holds generated text until it can check the complete answer. It validates the cited Markdown without compiling a grammar in the visitor's browser. It rejects an answer that stops at the token limit, repeats itself, omits concrete topics from the question, loses contact with the cited topic, or introduces a technical literal absent from the cited passage. Ordinary prose can use different wording. If validation fails, it ranks exact lines, adjacent lists, and relevant YAML or command examples against the question, then links the result to its documented sections. The complete excerpts remain available in a folded panel.
 
 The browser loads the full corpus when the visitor opens the assistant. A few megabytes of source Markdown fits this design. A corpus measured in tens of megabytes should use a partitioned index so the browser can fetch candidates on demand.
 

@@ -521,10 +521,10 @@ async function askQuestion(suppliedQuestion) {
     const generationFinishedAt = performance.now();
     if (generation.signal.aborted) throw new DOMException("The answer was stopped.", "AbortError");
     const rawAnswer = assistantMessage.content;
-    const grounding = formatGeneratedAnswer(assistantMessage.content, fitted.sources, finishReason);
+    const grounding = formatGeneratedAnswer(assistantMessage.content, fitted.sources, finishReason, question);
     if (!grounding.ok) {
       console.warn("smgen-assistant: rejected ungrounded answer", grounding);
-      const extracted = formatExtractiveAnswerSet(fitted.sources);
+      const extracted = formatExtractiveAnswerSet(fitted.sources, question);
       const best = extracted.sources[0];
       assistantMessage.content = extracted.answer || (best
         ? `See **${best.heading || best.title}** for the closest matching documentation. [Source 1]`

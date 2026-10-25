@@ -8,9 +8,9 @@ import test from "node:test";
 import { DEFAULT_CONFIG, normalizeBaseUrl, parseBuildOptions } from "../src/cli/config.mjs";
 
 test("the default model matches the documented Qwen build", () => {
-  assert.equal(DEFAULT_CONFIG.model.id, "Qwen2.5-Coder-0.5B-Instruct-q4f32_1-MLC");
-  assert.equal(DEFAULT_CONFIG.model.downloadMB, 300);
-  assert.equal(DEFAULT_CONFIG.model.memoryMB, 1061);
+  assert.equal(DEFAULT_CONFIG.model.id, "Qwen2.5-1.5B-Instruct-q4f32_1-MLC");
+  assert.equal(DEFAULT_CONFIG.model.downloadMB, 880);
+  assert.equal(DEFAULT_CONFIG.model.memoryMB, 1889);
   assert.deepEqual(DEFAULT_CONFIG.retrieval, { maxChunks: 2, maxCharacters: 3000 });
 });
 

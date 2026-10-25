@@ -5,17 +5,30 @@
 const LOW_VALUE_WORDS = new Set([
   "about", "after", "also", "and", "are", "author", "authors", "before", "can", "each", "for", "from", "into", "its", "let", "lets", "may", "need", "only", "own", "running", "that", "the", "their", "them", "then", "thing", "this", "through", "using", "with", "your"
 ]);
+const QUERY_LOW_VALUE_WORDS = new Set([
+  ...LOW_VALUE_WORDS,
+  "a", "an", "do", "does", "how", "i", "in", "is", "it", "me", "my", "of", "on", "one", "or", "please", "should", "site", "smgen", "tell", "to", "use", "what", "when", "where", "which", "who", "will", "would", "you"
+]);
 const GROUNDED_EQUIVALENTS = new Map([
   ["additional", ["custom"]],
+  ["assets", ["css", "javascript", "script", "stylesheet"]],
+  ["browser", ["css", "javascript", "script", "stylesheet"]],
   ["create", ["initialize"]],
   ["creating", ["initialize"]],
   ["define", ["register"]],
+  ["folder", ["directory"]],
+  ["frontmatter", ["metadata", "yaml"]],
   ["generate", ["generated", "build"]],
   ["initialize", ["init"]],
   ["navigate", ["cd"]],
   ["new", ["empty", "first"]],
+  ["opt", ["join", "membership"]],
+  ["publish", ["build", "copy", "output", "rebuild"]],
   ["running", ["run"]],
   ["setting", ["set"]],
+  ["view", ["open", "serve"]],
+  ["without", ["absent", "missing"]],
+  ["wins", ["highest", "override", "priority"]],
   ["website", ["site"]]
 ]);
 
@@ -59,8 +72,9 @@ function visibleGeneratedText(answer) {
  * Build a short answer from exact prose in the strongest retrieved passage.
  *
  * @param {CorpusChunk} source
+ * @param {string} [question]
  */
-export function formatExtractiveAnswer(source) {
+export function formatExtractiveAnswer(source, question = "") {
   /** @type {Array<{language: string, lines: string[]}>} */
   const codeBlocks = [];
   const prose = source.content.replace(/^\s*(`{3,}|~{3,})([^\n]*)\n([\s\S]*?)^\s*\1\s*$/gmu, (block, _fence, language, code) => {
@@ -71,34 +85,63 @@ export function formatExtractiveAnswer(source) {
     return `\n\nSMGEN_CODE_BLOCK_${index}\n\n`;
   });
   const paragraphs = prose.split(/\n\s*\n/gu);
-  const candidates = paragraphs.flatMap((paragraph, index) => {
-    if (/^SMGEN_CODE_BLOCK_\d+$/u.test(paragraph.trim())) return [];
+  /** @type {Array<{text: string, order: number}>} */
+  const candidates = [];
+  const consumed = new Set();
+  for (const [index, paragraph] of paragraphs.entries()) {
+    if (consumed.has(index)) continue;
+    if (/^SMGEN_CODE_BLOCK_\d+$/u.test(paragraph.trim())) continue;
     const lines = paragraph.split("\n").map((line) => line.trim()).filter(Boolean);
     const list = lines.filter((line) => /^(?:[-*+]|\d+\.)\s+/u.test(line));
-    const blocks = list.length === lines.length ? list : [lines.join(" ")];
-    return blocks.flatMap((block) => {
+    const nextLines = (paragraphs[index + 1] ?? "").split("\n").map((line) => line.trim()).filter(Boolean);
+    const nextList = nextLines.filter((line) => /^(?:[-*+]|\d+\.)\s+/u.test(line));
+    let blocks = list.length === lines.length ? list : [lines.join(" ")];
+    if (blocks.length === 1 && blocks[0]?.endsWith(":") && nextList.length === nextLines.length && nextList.length) {
+      const items = nextList.map((line) => line.replace(/^(?:[-*+]|\d+\.)\s+/u, "").replace(/[.;]\s*$/u, ""));
+      blocks = [`${blocks[0]} ${items.join("; ")}.`];
+      consumed.add(index + 1);
+    }
+    for (const block of blocks) {
       const cleaned = block.replace(/^(?:[-*+]|\d+\.)\s+/u, "").trim();
       const marker = paragraphs[index + 1]?.trim().match(/^SMGEN_CODE_BLOCK_(\d+)$/u);
       const code = marker ? codeBlocks[Number(marker[1])] : undefined;
-      const commands = code && /^(?:bash|console|sh|shell)$/u.test(code.language)
+      let commands = code && /^(?:bash|console|sh|shell)$/u.test(code.language)
         ? code.lines.filter((line) => line.length <= 80).slice(0, 3)
         : [];
+      if (code && /^(?:yaml|yml)$/u.test(code.language) && question.trim()) {
+        commands = code.lines
+          .filter((line) => line !== "---" && line.length <= 100)
+          .map((line, order) => ({ line, order, score: extractiveScore(line, question) }))
+          .filter(({ score }) => score > 0)
+          .sort((a, b) => b.score - a.score || a.order - b.order)
+          .slice(0, 2)
+          .sort((a, b) => a.order - b.order)
+          .map(({ line }) => line);
+      }
       const expanded = commands.length ? `${cleaned} ${commands.map((line) => `\`${line}\``).join(", ")}` : cleaned;
-      if (expanded.length <= 240) return [expanded];
-      return cleaned.match(/[^.!?]+[.!?](?:\s|$)/gu)?.map((sentence) => sentence.trim()) ?? [];
-    });
-  }).filter((block) => block
-    && block !== "…"
-    && block.length <= 240
-    && !/^#{1,6}\s/u.test(block)
-    && !/^!\[[^\]]*\]\([^)]*\)$/u.test(block));
+      const expandedBlocks = expanded.length <= 480
+        ? [expanded]
+        : (cleaned.match(/[^.!?]+[.!?](?:\s|$)/gu)?.map((sentence) => sentence.trim()) ?? []);
+      for (const text of expandedBlocks) {
+        if (text
+          && text !== "…"
+          && text.length <= 480
+          && !/^#{1,6}\s/u.test(text)
+          && !/^!\[[^\]]*\]\([^)]*\)$/u.test(text)) {
+          candidates.push({ text, order: index });
+        }
+      }
+    }
+  }
+  candidates.sort((a, b) => extractiveScore(b.text, question) - extractiveScore(a.text, question) || a.order - b.order);
   /** @type {string[]} */
   const selected = [];
   let characters = 0;
-  for (const block of candidates) {
-    if (selected.length >= 4 || characters + block.length > 520) break;
-    selected.push(block);
-    characters += block.length;
+  for (const candidate of candidates) {
+    if (selected.length >= 4) break;
+    if (characters + candidate.text.length > 720) continue;
+    selected.push(candidate.text);
+    characters += candidate.text.length;
   }
   return selected.map((block) => `- ${block} [Source 1]`).join("\n");
 }
@@ -107,9 +150,10 @@ export function formatExtractiveAnswer(source) {
  * Build a balanced extractive fallback across the supplied passages.
  *
  * @param {CorpusChunk[]} sources
+ * @param {string} [question]
  * @returns {{answer: string, sources: CorpusChunk[]}}
  */
-export function formatExtractiveAnswerSet(sources) {
+export function formatExtractiveAnswerSet(sources, question = "") {
   const candidates = sources.slice(0, 4);
   const perSource = Math.max(1, Math.floor(4 / Math.max(1, candidates.length)));
   /** @type {string[]} */
@@ -117,7 +161,7 @@ export function formatExtractiveAnswerSet(sources) {
   /** @type {CorpusChunk[]} */
   const selected = [];
   for (const source of candidates) {
-    const extracted = formatExtractiveAnswer(source).split("\n").filter(Boolean).slice(0, perSource);
+    const extracted = formatExtractiveAnswer(source, question).split("\n").filter(Boolean).slice(0, perSource);
     if (!extracted.length) continue;
     const sourceNumber = selected.push(source);
     bullets.push(...extracted.map((bullet) => bullet.replace(/\[Source 1\]/gu, `[Source ${sourceNumber}]`)));
@@ -149,6 +193,73 @@ function groundedVariants(word) {
   if (word.length > 4 && word.endsWith("ed")) variants.add(word.slice(0, -2).replace(/(.)\1$/u, "$1"));
   if (word.length > 4 && word.endsWith("s")) variants.add(word.slice(0, -1));
   return [...variants];
+}
+
+/**
+ * Tokenize prose for question coverage and extractive ranking.
+ *
+ * @param {string} text
+ */
+function topicTerms(text) {
+  const terms = new Set();
+  for (const match of text.normalize("NFKC").toLocaleLowerCase("en-US").match(/[\p{L}\p{N}_./:+#-]+/gu) ?? []) {
+    terms.add(match);
+    for (const part of match.split(/[_./:+#-]+/gu)) if (part) terms.add(part);
+  }
+  return terms;
+}
+
+/**
+ * Rank an exact documentation excerpt by how directly it addresses a question.
+ *
+ * @param {string} text
+ * @param {string} question
+ */
+function extractiveScore(text, question) {
+  if (!question.trim()) return 0;
+  const candidateTerms = topicTerms(text);
+  const questionTerms = [...topicTerms(question)].filter((term) => term.length > 2 && !QUERY_LOW_VALUE_WORDS.has(term));
+  const topicScore = questionTerms.reduce((score, term) => {
+    const matched = groundedVariants(term).some((variant) => candidateTerms.has(variant));
+    return score + (matched ? (/[_./:+#-]/u.test(term) ? 8 : 2) : 0);
+  }, 0);
+  return topicScore + (/\b(?:in this order|it renders|selector supports):/iu.test(text) ? 4 : 0);
+}
+
+/**
+ * Check that a grounded answer still addresses the concrete topics in the question.
+ *
+ * @param {string} answer
+ * @param {CorpusChunk[]} sources
+ * @param {string} question
+ * @returns {{ok: true} | {ok: false, reason: string, missing: string[]}}
+ */
+function validateQuestionCoverage(answer, sources, question) {
+  if (!question.trim()) return { ok: true };
+  const documentation = comparable(sources.map((source) => source.content).join("\n")).toLocaleLowerCase("en-US");
+  const normalizedAnswer = comparable(answer).toLocaleLowerCase("en-US");
+  const requiredLiterals = technicalLiterals(question).filter((literal) => documentation.includes(comparable(literal).toLocaleLowerCase("en-US")));
+  const missingLiterals = requiredLiterals.filter((literal) => !normalizedAnswer.includes(comparable(literal).toLocaleLowerCase("en-US")));
+  if (missingLiterals.length) return { ok: false, reason: "incomplete-answer", missing: missingLiterals };
+
+  const sourceTerms = topicTerms(documentation);
+  const answerTerms = topicTerms(normalizedAnswer);
+  const relevant = [...topicTerms(question)].filter((term) => term.length > 2
+    && !QUERY_LOW_VALUE_WORDS.has(term)
+    && groundedVariants(term).some((variant) => sourceTerms.has(variant)));
+  const unique = [...new Set(relevant)];
+  if (unique.length < 3) return { ok: true };
+  const covered = unique.filter((term) => groundedVariants(term).some((variant) => answerTerms.has(variant)));
+  const minimum = Math.max(2, Math.min(3, Math.ceil(unique.length * 0.3)));
+  if (covered.length < minimum) {
+    return { ok: false, reason: "incomplete-answer", missing: unique.filter((term) => !covered.includes(term)).slice(0, 4) };
+  }
+  if (/\b(?:order|precedence|which .*wins?|wins?)\b/iu.test(question)
+    && /\b(?:lowest|highest|order|precedence|override|priority|wins?|before|after)\b/iu.test(documentation)
+    && !/\b(?:lowest|highest|order|precedence|override|priority|wins?|before|after)\b/iu.test(answer)) {
+    return { ok: false, reason: "incomplete-answer", missing: ["precedence"] };
+  }
+  return { ok: true };
 }
 
 /**
@@ -275,9 +386,10 @@ export function formatGroundedMarkdown(answer, sources, finishReason) {
  * @param {string} answer
  * @param {CorpusChunk[]} sources
  * @param {string | null} _finishReason
- * @returns {{ok: true, answer: string, sources: CorpusChunk[], filtered: boolean} | {ok: false, reason: string, unsupported?: string[]}}
+ * @param {string} [question]
+ * @returns {{ok: true, answer: string, sources: CorpusChunk[], filtered: boolean} | {ok: false, reason: string, unsupported?: string[], missing?: string[]}}
  */
-export function formatGeneratedAnswer(answer, sources, _finishReason) {
+export function formatGeneratedAnswer(answer, sources, _finishReason, question = "") {
   const visible = visibleGeneratedText(answer);
   if (!visible) return { ok: false, reason: "empty" };
   if (!sources.length) return { ok: false, reason: "missing-sources" };
@@ -316,6 +428,8 @@ export function formatGeneratedAnswer(answer, sources, _finishReason) {
   const used = [...new Set(matched.map((item) => item.source))];
   const selected = used.map((index) => sources[index]).filter((source) => source !== undefined);
   const markdown = matched.map((item) => `- ${item.content} [Source ${used.indexOf(item.source) + 1}]`).join("\n");
+  const coverage = validateQuestionCoverage(markdown, sources, question);
+  if (!coverage.ok) return coverage;
   return { ok: true, answer: markdown, sources: selected, filtered: matched.length < rawBlocks.length };
 }
 
