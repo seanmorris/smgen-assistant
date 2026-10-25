@@ -178,7 +178,7 @@ export function validateGroundedAnswer(answer, sources, finishReason) {
 }
 
 /**
- * Convert grammar-constrained model JSON into cited Markdown after validation.
+ * Convert model JSON into cited Markdown after validation.
  *
  * @param {string} answer
  * @param {CorpusChunk[]} sources

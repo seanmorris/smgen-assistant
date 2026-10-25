@@ -295,30 +295,7 @@ export async function streamAnswer(engine, messages, onText, signal) {
       max_tokens: 256,
       repetition_penalty: 1.1,
       frequency_penalty: 0.5,
-      response_format: {
-        type: "json_object",
-        schema: JSON.stringify({
-          type: "object",
-          properties: {
-            items: {
-              type: "array",
-              minItems: 1,
-              maxItems: 3,
-              items: {
-                type: "object",
-                properties: {
-                  text: { type: "string", maxLength: 140 },
-                  source: { type: "integer", minimum: 1, maximum: 4 }
-                },
-                required: ["text", "source"],
-                additionalProperties: false
-              }
-            }
-          },
-          required: ["items"],
-          additionalProperties: false
-        })
-      }
+      presence_penalty: 0
     });
     for await (const chunk of response) {
       if (signal.aborted) break;

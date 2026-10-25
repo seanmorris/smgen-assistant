@@ -276,7 +276,7 @@ test("model loading retries only Cache API network failures", async () => {
   assert.equal(attempts, 1);
 });
 
-test("answer streaming reports truncation and discourages repetition", async () => {
+test("answer streaming avoids blocking grammar compilation", async () => {
   /** @type {Record<string, unknown> | undefined} */
   let request;
   const engine = /** @type {import('@mlc-ai/web-llm').MLCEngineInterface} */ (/** @type {unknown} */ ({
@@ -302,9 +302,8 @@ test("answer streaming reports truncation and discourages repetition", async () 
   assert.equal(request?.max_tokens, 256);
   assert.equal(request?.repetition_penalty, 1.1);
   assert.equal(request?.frequency_penalty, 0.5);
-  assert.equal(/** @type {{type?: string}} */ (request?.response_format).type, "json_object");
-  assert.match(/** @type {{schema?: string}} */ (request?.response_format).schema ?? "", /"maxItems":3/u);
-  assert.match(/** @type {{schema?: string}} */ (request?.response_format).schema ?? "", /"maxLength":140/u);
+  assert.equal(request?.presence_penalty, 0);
+  assert.equal(request?.response_format, undefined);
 });
 
 test("answer streaming interrupts output too large to pass validation", async () => {
