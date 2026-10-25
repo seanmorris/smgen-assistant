@@ -4,6 +4,9 @@
 			<div class = "row wide">
 				<nav>
 					<a class = "logo" href = "<?=escapeHtml(resolveAssetUrl('/'))?>">
+						<?php if(staticAssetExists('/logo.svg')): ?>
+						<img src="<?=escapeHtml(resolveAssetUrl('/logo.svg'))?>" class="logo-image" alt="" width="216" height="210">
+						<?php endif; ?>
 						<span class = "col">
 							<span class = "logo-text">
 								<?=escapeHtml(getConf('PRODUCT_NAME') ?: 'Product Name');?>

@@ -105,8 +105,16 @@ section.heading header {
 
 a.logo .col {
 	flex-direction: row;
-	align-items: baseline;
+	align-items: center;
 	gap: 0.8rem;
+}
+
+a.logo img.logo-image {
+	flex: 0 0 auto;
+	width: 2rem;
+	height: 2rem;
+	margin: 0 0.05rem 0 0;
+	object-fit: contain;
 }
 
 a.logo .logo-text {
