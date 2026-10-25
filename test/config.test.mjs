@@ -58,6 +58,9 @@ test("a model list preserves order and optional resource estimates", async () =>
       "    label: Small",
       "    downloadMB: 300",
       "    memoryMB: 1000",
+      "    quality: 10",
+      "    requiredFeatures: [shader-f16]",
+      "    minStorageBufferMB: 256",
       "  - id: larger-model",
       "",
     ].join("\n"));
@@ -65,7 +68,15 @@ test("a model list preserves order and optional resource estimates", async () =>
     assert.equal(parsed.help, false);
     if (parsed.help) return;
     assert.deepEqual(parsed.config.publicConfig.models, [
-      { id: "small-model", label: "Small", downloadMB: 300, memoryMB: 1000 },
+      {
+        id: "small-model",
+        label: "Small",
+        downloadMB: 300,
+        memoryMB: 1000,
+        quality: 10,
+        requiredFeatures: ["shader-f16"],
+        minStorageBufferMB: 256
+      },
       { id: "larger-model", label: "larger-model" }
     ]);
     assert.deepEqual(parsed.config.publicConfig.model, parsed.config.publicConfig.models[0]);
@@ -82,6 +93,10 @@ test("model configuration rejects ambiguous and duplicate choices", async () => 
     await assert.rejects(parseBuildOptions(["build"], {}, directory), /either model or models/u);
     await writeFile(filename, "models:\n  - id: same\n  - id: same\n");
     await assert.rejects(parseBuildOptions(["build"], {}, directory), /duplicate IDs/u);
+    await writeFile(filename, "models:\n  - id: model\n    requiredFeatures: []\n");
+    await assert.rejects(parseBuildOptions(["build"], {}, directory), /nonempty sequence/u);
+    await writeFile(filename, "models:\n  - id: model\n    quality: 0\n");
+    await assert.rejects(parseBuildOptions(["build"], {}, directory), /positive integer/u);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

@@ -30,6 +30,9 @@
  * @property {string} label
  * @property {number} [downloadMB]
  * @property {number} [memoryMB]
+ * @property {number} [quality]
+ * @property {string[]} [requiredFeatures]
+ * @property {number} [minStorageBufferMB]
  */
 
 /**

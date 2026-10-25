@@ -115,6 +115,23 @@ function optionalModelMetric(value, name) {
 }
 
 /**
+ * Validate an optional list of WebGPU feature names.
+ *
+ * @param {unknown} value
+ * @param {string} name
+ * @returns {string[] | undefined}
+ */
+function optionalFeatureList(value, name) {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error(`${name} must be a nonempty sequence`);
+  }
+  const features = value.map((feature, index) => optionalString(feature, `${name}[${index}]`, ""));
+  if (new Set(features).size !== features.length) throw new Error(`${name} must not contain duplicates`);
+  return features;
+}
+
+/**
  * Validate one WebLLM model choice.
  *
  * @param {unknown} value
@@ -140,11 +157,23 @@ function modelOption(value, name, fallback) {
   const memoryMB = model.memoryMB === undefined && usesFallback
     ? fallback?.memoryMB
     : optionalModelMetric(model.memoryMB, `${name}.memoryMB`);
+  const quality = model.quality === undefined && usesFallback
+    ? fallback?.quality
+    : optionalModelMetric(model.quality, `${name}.quality`);
+  const requiredFeatures = model.requiredFeatures === undefined && usesFallback
+    ? fallback?.requiredFeatures
+    : optionalFeatureList(model.requiredFeatures, `${name}.requiredFeatures`);
+  const minStorageBufferMB = model.minStorageBufferMB === undefined && usesFallback
+    ? fallback?.minStorageBufferMB
+    : optionalModelMetric(model.minStorageBufferMB, `${name}.minStorageBufferMB`);
   return {
     id,
     label,
     ...(downloadMB === undefined ? {} : { downloadMB }),
-    ...(memoryMB === undefined ? {} : { memoryMB })
+    ...(memoryMB === undefined ? {} : { memoryMB }),
+    ...(quality === undefined ? {} : { quality }),
+    ...(requiredFeatures === undefined ? {} : { requiredFeatures }),
+    ...(minStorageBufferMB === undefined ? {} : { minStorageBufferMB })
   };
 }
 

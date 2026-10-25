@@ -1,26 +1,21 @@
 // @ts-check
 
+import { adapterCompatibilityIssue } from "./model-selection.mjs";
+
 export const MAX_RESPONSE_CHARACTERS = 1200;
 
 /** @typedef {import('@mlc-ai/web-llm').MLCEngineInterface} MLCEngineInterface */
 /** @typedef {import('@mlc-ai/web-llm').InitProgressReport} InitProgressReport */
+/** @typedef {import('../shared/types.mjs').AssistantModel} AssistantModel */
 
 /**
  * @typedef {object} EngineOptions
- * @property {string} modelId
+ * @property {AssistantModel} model
  * @property {URL} assetBase
  * @property {(report: InitProgressReport) => void} onProgress
  */
 
-/**
- * Report whether a WebLLM model name selects half-precision shaders.
- *
- * @param {string} modelId
- * @returns {boolean}
- */
-export function modelNeedsShaderF16(modelId) {
-  return /-q\d+f16(?:_|-|$)/iu.test(modelId);
-}
+export { adapterCompatibilityIssue, modelNeedsShaderF16 } from "./model-selection.mjs";
 
 /**
  * Build WebLLM's model configuration with IndexedDB artifact storage.
@@ -235,32 +230,6 @@ async function retireAssistantServiceWorker(assetBase, timeout) {
 }
 
 /**
- * Find a WebLLM runtime requirement that the adapter cannot meet.
- *
- * @param {GPUAdapter} adapter
- * @param {string} modelId
- * @returns {string | null}
- */
-export function adapterCompatibilityIssue(adapter, modelId) {
-  const mebibyte = 1024 * 1024;
-  const checks = [
-    ["maximum buffer size", adapter.limits.maxBufferSize, 256 * mebibyte],
-    ["maximum storage buffer binding size", adapter.limits.maxStorageBufferBindingSize, 128 * mebibyte],
-    ["compute workgroup storage", adapter.limits.maxComputeWorkgroupStorageSize, 32 * 1024],
-    ["storage buffers per shader stage", adapter.limits.maxStorageBuffersPerShaderStage, 10]
-  ];
-  for (const [label, available, required] of checks) {
-    if (/** @type {number} */ (available) < /** @type {number} */ (required)) {
-      return `This WebGPU adapter provides insufficient ${label} for WebLLM.`;
-    }
-  }
-  if (modelNeedsShaderF16(modelId) && !adapter.features.has("shader-f16")) {
-    return "This model requires WebGPU shader-f16 support. Select a q4f32 model for this device.";
-  }
-  return null;
-}
-
-/**
  * Report whether a model load failed during a Cache API network request.
  *
  * @param {unknown} error
@@ -309,13 +278,13 @@ export async function releaseAssistantEngine(engine) {
 /**
  * Check the selected adapter before WebLLM compiles the model shaders.
  *
- * @param {string} modelId
+ * @param {AssistantModel} model
  */
-async function checkModelSupport(modelId) {
+async function checkModelSupport(model) {
   if (!("gpu" in navigator)) throw new Error("This browser does not provide WebGPU.");
   const adapter = await navigator.gpu.requestAdapter({ powerPreference: "high-performance" });
   if (!adapter) throw new Error("This browser could not find a WebGPU adapter.");
-  const issue = adapterCompatibilityIssue(adapter, modelId);
+  const issue = adapterCompatibilityIssue(adapter, model);
   if (issue) throw new Error(issue);
 }
 
@@ -326,7 +295,7 @@ async function checkModelSupport(modelId) {
  * @returns {Promise<MLCEngineInterface>}
  */
 export async function createAssistantEngine(options) {
-  await checkModelSupport(options.modelId);
+  await checkModelSupport(options.model);
   const { prebuiltAppConfig, WebWorkerMLCEngine } = await import("@mlc-ai/web-llm");
   const engineConfig = {
     initProgressCallback: options.onProgress,
@@ -340,7 +309,7 @@ export async function createAssistantEngine(options) {
   const worker = new Worker(new URL("engine-worker.js", options.assetBase), { type: "module", name: "smgen-assistant" });
   const engine = new WebWorkerMLCEngine(worker, engineConfig);
   try {
-    return await loadModelWithRetry(engine, options.modelId);
+    return await loadModelWithRetry(engine, options.model.id);
   } catch (error) {
     await releaseAssistantEngine(engine);
     throw error;

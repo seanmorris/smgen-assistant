@@ -24,6 +24,22 @@ npm run eval -- \
 node eval/summarize.mjs /tmp/smgen-assistant-eval.json
 ```
 
+Inspect a device before downloading a model:
+
+```sh
+npm run eval -- \
+  --probe-only true \
+  --cdp http://device-address:9223 \
+  --url http://localhost:9000/__smgen-assistant/frame.html?evaluation=1 \
+  --output /tmp/smgen-assistant-device.json
+```
+
+The report records the adapter identity exposed by the browser, WebGPU features,
+relevant limits, compatibility for every configured model, and the recommended
+model ID. Adapter identity may be empty because browsers can withhold it. The
+probe does not load WebLLM or download a model. WebGPU does not expose free GPU
+memory, so a compatible result still needs a real load and answer test.
+
 The runner opens `frame.html?evaluation=1`. Only that explicit mode reports the
 retrieved and fitted sources, raw generation, validation result, displayed
 answer, token usage, and timing to the same-origin test page. Ordinary embedded

@@ -15,7 +15,8 @@ function options() {
     values.set(name, value);
   }
   const models = (values.get("--models") ?? "").split(",").map((value) => value.trim()).filter(Boolean);
-  if (!models.length) throw new Error("Pass one or more comma-separated model IDs with --models");
+  const probeOnly = values.get("--probe-only") === "true";
+  if (!models.length && !probeOnly) throw new Error("Pass one or more comma-separated model IDs with --models");
   return {
     cdp: values.get("--cdp") ?? "http://172.19.0.1:9223",
     url: values.get("--url") ?? "http://localhost:9000/__smgen-assistant/frame.html?evaluation=1",
@@ -24,6 +25,7 @@ function options() {
     scenarios: new Set((values.get("--scenarios") ?? "").split(",").map((value) => value.trim()).filter(Boolean)),
     sequences: values.get("--sequences") === "true",
     clearHttpCache: values.get("--clear-http-cache") === "true",
+    probeOnly,
     models
   };
 }
@@ -82,9 +84,10 @@ async function ask(page, question) {
  *
  * @param {import("playwright-core").BrowserContext} context
  * @param {string} url
+ * @param {boolean} [requireModel]
  * @returns {Promise<import("playwright-core").Page>}
  */
-async function openEvaluationPage(context, url) {
+async function openEvaluationPage(context, url, requireModel = true) {
   const page = await context.newPage();
   try {
     await page.addInitScript(() => {
@@ -96,7 +99,8 @@ async function openEvaluationPage(context, url) {
       });
     });
     await page.goto(url, { waitUntil: "domcontentloaded" });
-    await page.locator("#question:not([disabled])").waitFor({ timeout: 30_000 });
+    await page.waitForFunction(() => window.__smgenEvaluationDevice !== undefined, undefined, { timeout: 30_000 });
+    if (requireModel) await page.locator("#question:not([disabled])").waitFor({ timeout: 30_000 });
     const hasCleanupHook = await page.evaluate(() => typeof window.__smgenEvaluationDeleteModel === "function");
     if (!hasCleanupHook) throw new Error("The generated assistant lacks the current evaluation cleanup hook. Rebuild its bundle before running the evaluator.");
     return page;
@@ -196,6 +200,7 @@ async function main() {
     startedAt: new Date().toISOString(),
     settings: { ...settings, scenarios: [...settings.scenarios] },
     cases: cases.length,
+    device: null,
     records: [],
     cleanups: []
   };
@@ -203,21 +208,31 @@ async function main() {
   const context = browser.contexts()[0];
   if (!context) throw new Error("The CDP browser has no context");
   try {
-    for (const modelId of settings.models) {
-      const page = await openEvaluationPage(context, settings.url);
-      try {
-        await evaluateModel(page, modelId, cases, result, settings.output);
-      } finally {
-        process.stdout.write(`${modelId} releasing model and worker\n`);
-        await page.close();
-        await new Promise((resolve) => setTimeout(resolve, 1_000));
-        process.stdout.write(`${modelId} deleting cached files\n`);
-        const cleanup = await deleteModelFromDisk(context, settings.url, modelId);
-        if (settings.clearHttpCache) await clearBrowserHttpCache(context);
-        result.cleanups.push({ modelId, ...cleanup, httpCacheCleared: settings.clearHttpCache, finishedAt: new Date().toISOString() });
-        await save(settings.output, result);
-        const cacheDetail = settings.clearHttpCache ? " and HTTP cache cleared" : "";
-        process.stdout.write(`${modelId} deleted from disk (${cleanup.deletedRecords} residual records removed${cacheDetail})\n`);
+    const probePage = await openEvaluationPage(context, settings.url, false);
+    try {
+      result.device = await probePage.evaluate(() => window.__smgenEvaluationDevice);
+    } finally {
+      await probePage.close();
+    }
+    await save(settings.output, result);
+    process.stdout.write(`${JSON.stringify(result.device, null, 2)}\n`);
+    if (!settings.probeOnly) {
+      for (const modelId of settings.models) {
+        const page = await openEvaluationPage(context, settings.url);
+        try {
+          await evaluateModel(page, modelId, cases, result, settings.output);
+        } finally {
+          process.stdout.write(`${modelId} releasing model and worker\n`);
+          await page.close();
+          await new Promise((resolve) => setTimeout(resolve, 1_000));
+          process.stdout.write(`${modelId} deleting cached files\n`);
+          const cleanup = await deleteModelFromDisk(context, settings.url, modelId);
+          if (settings.clearHttpCache) await clearBrowserHttpCache(context);
+          result.cleanups.push({ modelId, ...cleanup, httpCacheCleared: settings.clearHttpCache, finishedAt: new Date().toISOString() });
+          await save(settings.output, result);
+          const cacheDetail = settings.clearHttpCache ? " and HTTP cache cleared" : "";
+          process.stdout.write(`${modelId} deleted from disk (${cleanup.deletedRecords} residual records removed${cacheDetail})\n`);
+        }
       }
     }
   } finally {

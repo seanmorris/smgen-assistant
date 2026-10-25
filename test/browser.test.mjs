@@ -13,6 +13,7 @@ import {
   modelNeedsShaderF16,
   streamAnswer
 } from "../src/browser/engine-client.mjs";
+import { buildDeviceReport, recommendModel } from "../src/browser/model-selection.mjs";
 import { countRuntimePromptTokens } from "../src/browser/prompt-tokens.mjs";
 import { renderMarkdown, safeLink } from "../src/browser/render.mjs";
 import { VERSION } from "../src/shared/version.mjs";
@@ -196,7 +197,7 @@ test("multiple configured models use a persistent deferred picker", async () => 
   assert.match(frameSource, /models\.length < 2/u);
   assert.match(frameSource, /localStorage\.setItem\(modelKey, nextModel\.id\)/u);
   assert.match(frameSource, /await module\.releaseAssistantEngine\(previousEngine\)/u);
-  assert.match(frameSource, /modelId: selectedModel\.id/u);
+  assert.match(frameSource, /model: selectedModel/u);
 });
 
 test("prompt counting uses the loaded tokenizer and conversation template", () => {
@@ -269,6 +270,62 @@ test("adapter checks reject unsupported WebLLM limits before model loading", () 
     limits: { ...limits, maxBufferSize: 128 * 1024 * 1024 }
   }));
   assert.match(adapterCompatibilityIssue(constrained, "model-q4f32_1") ?? "", /maximum buffer size/u);
+});
+
+test("model recommendations use compatibility, author quality, and resource estimates", () => {
+  const limits = {
+    maxBufferSize: 512 * 1024 * 1024,
+    maxStorageBufferBindingSize: 256 * 1024 * 1024,
+    maxComputeWorkgroupStorageSize: 32 * 1024,
+    maxStorageBuffersPerShaderStage: 10
+  };
+  const f32Adapter = /** @type {GPUAdapter} */ (/** @type {unknown} */ ({
+    info: { vendor: "amd", architecture: "", device: "", description: "" },
+    features: new Set(),
+    limits
+  }));
+  const f16Adapter = /** @type {GPUAdapter} */ (/** @type {unknown} */ ({
+    info: { vendor: "apple", architecture: "apple-m", device: "", description: "" },
+    features: new Set(["shader-f16"]),
+    limits
+  }));
+  const models = [
+    { id: "fallback-q4f32_1", label: "Fallback", quality: 10, memoryMB: 1900 },
+    { id: "strong-q4f32_1", label: "Strong f32", quality: 20, memoryMB: 2600 },
+    { id: "strong-q4f16_1", label: "Strong f16", quality: 20, memoryMB: 1900 },
+    { id: "largest-q4f16_1", label: "Largest", quality: 30, memoryMB: 3500, requiredFeatures: ["future-feature"] }
+  ];
+  assert.equal(recommendModel(f32Adapter, models)?.id, "strong-q4f32_1");
+  assert.equal(recommendModel(f16Adapter, models)?.id, "strong-q4f16_1");
+  assert.match(adapterCompatibilityIssue(
+    f16Adapter,
+    /** @type {import('../src/shared/types.mjs').AssistantModel} */ (models[3])
+  ) ?? "", /future-feature/u);
+  assert.match(adapterCompatibilityIssue(f16Adapter, {
+    id: "large-buffer-q4f32_1",
+    label: "Large buffer",
+    minStorageBufferMB: 300
+  }) ?? "", /storage buffer binding size/u);
+  const report = buildDeviceReport(f16Adapter, models);
+  assert.equal(report.recommendedModelId, "strong-q4f16_1");
+  assert.deepEqual(/** @type {{features: string[]}} */ (report.adapter).features, ["shader-f16"]);
+});
+
+test("model recommendations preserve configured order without quality ranks", () => {
+  const adapter = /** @type {GPUAdapter} */ (/** @type {unknown} */ ({
+    features: new Set(),
+    limits: {
+      maxBufferSize: 256 * 1024 * 1024,
+      maxStorageBufferBindingSize: 128 * 1024 * 1024,
+      maxComputeWorkgroupStorageSize: 32 * 1024,
+      maxStorageBuffersPerShaderStage: 10
+    }
+  }));
+  const models = [
+    { id: "first-q4f32_1", label: "First", memoryMB: 2000 },
+    { id: "second-q4f32_1", label: "Second", memoryMB: 1000 }
+  ];
+  assert.equal(recommendModel(adapter, models)?.id, "first-q4f32_1");
 });
 
 test("model loading retries only Cache API network failures", async () => {

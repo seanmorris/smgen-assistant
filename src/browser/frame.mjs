@@ -3,6 +3,7 @@
 import { retrieveChunks } from "../shared/retrieval.mjs";
 import { formatExtractiveAnswerSet, formatGeneratedAnswer } from "../shared/grounding.mjs";
 import { fitPrompt, MAX_QUESTION_CHARACTERS, questionUsesPreviousContext } from "../shared/prompt.mjs";
+import { adapterCompatibilityIssue, buildDeviceReport, recommendModel } from "./model-selection.mjs";
 import { renderMarkdown } from "./render.mjs";
 
 /** @typedef {import('../shared/types.mjs').Corpus} Corpus */
@@ -10,7 +11,7 @@ import { renderMarkdown } from "./render.mjs";
 /** @typedef {import('../shared/types.mjs').AssistantModel} AssistantModel */
 /** @typedef {import('../shared/types.mjs').PublicAssistantConfig} PublicAssistantConfig */
 /** @typedef {import('@mlc-ai/web-llm').MLCEngineInterface} MLCEngineInterface */
-/** @typedef {Window & {__smgenEvaluationDeleteModel?: (modelId: string) => Promise<{deletedRecords: number, remainingRecords: number}>}} EvaluationWindow */
+/** @typedef {Window & {__smgenEvaluationDeleteModel?: (modelId: string) => Promise<{deletedRecords: number, remainingRecords: number}>, __smgenEvaluationDevice?: Record<string, unknown>}} EvaluationWindow */
 
 /**
  * @typedef {object} SourceLink
@@ -55,6 +56,10 @@ let config = null;
 let models = [];
 /** @type {AssistantModel | null} */
 let selectedModel = null;
+/** @type {AssistantModel | null} */
+let recommendedModel = null;
+/** @type {GPUAdapter | null} */
+let gpuAdapter = null;
 /** @type {MLCEngineInterface | null} */
 let engine = null;
 /** @type {AbortController | null} */
@@ -257,9 +262,9 @@ function showRetry(article, question, message) {
  * @param {boolean} working
  */
 function setWorking(working) {
-  questionElement.disabled = working || !config || !("gpu" in navigator);
-  submitButton.disabled = working || !config || !("gpu" in navigator);
-  modelSelectElement.disabled = working || !config || !("gpu" in navigator);
+  questionElement.disabled = working || !config || !gpuAdapter || !selectedModel;
+  submitButton.disabled = working || !config || !gpuAdapter || !selectedModel;
+  modelSelectElement.disabled = working || !config || !gpuAdapter || !selectedModel;
   cancelButton.hidden = !generation;
 }
 
@@ -274,25 +279,39 @@ function modelNote(model, ready = false) {
   const estimates = [];
   if (model.downloadMB) estimates.push(`${model.downloadMB.toLocaleString()} MB download`);
   if (model.memoryMB) estimates.push(`${model.memoryMB.toLocaleString()} MB GPU memory`);
-  return estimates.length
+  const detail = estimates.length
     ? `${model.label}, about ${estimates.join(" and ")}.`
     : `${model.label} downloads on first use.`;
+  return model.id === recommendedModel?.id ? `Recommended for this device. ${detail}` : detail;
 }
 
-/** Populate the model picker and restore a valid earlier selection. */
-function configureModelPicker() {
+/**
+ * Populate the model picker and restore a compatible earlier selection.
+ *
+ * @param {GPUAdapter | null} adapter
+ */
+function configureModelPicker(adapter) {
   if (!config) return;
   models = Array.isArray(config.models) && config.models.length ? config.models : [config.model];
+  recommendedModel = adapter ? recommendModel(adapter, models) : null;
   let stored = "";
   try {
     stored = localStorage.getItem(modelKey) ?? "";
   } catch {}
-  selectedModel = models.find(({ id }) => id === stored) ?? models[0] ?? null;
+  const storedModel = models.find(({ id }) => id === stored);
+  selectedModel = storedModel && (!adapter || adapterCompatibilityIssue(adapter, storedModel) === null)
+    ? storedModel
+    : (recommendedModel ?? (adapter ? null : (models[0] ?? null)));
   modelSelectElement.replaceChildren();
   for (const model of models) {
+    const issue = adapter ? adapterCompatibilityIssue(adapter, model) : null;
     const option = document.createElement("option");
     option.value = model.id;
-    option.textContent = model.downloadMB ? `${model.label} (${model.downloadMB.toLocaleString()} MB)` : model.label;
+    option.disabled = issue !== null;
+    const estimate = model.downloadMB ? ` (${model.downloadMB.toLocaleString()} MB)` : "";
+    const state = issue ? " · Unavailable" : (model.id === recommendedModel?.id ? " · Recommended" : "");
+    option.textContent = `${model.label}${estimate}${state}`;
+    if (issue) option.title = issue;
     modelSelectElement.append(option);
   }
   modelSelectElement.value = selectedModel?.id ?? "";
@@ -329,7 +348,7 @@ async function ensureEngine(activity) {
   }, 2_000);
   try {
     engine = await module.createAssistantEngine({
-      modelId: selectedModel.id,
+      model: selectedModel,
       assetBase,
       onProgress: (report) => {
         lastUpdateAt = performance.now();
@@ -371,6 +390,17 @@ async function changeModel() {
     liveStatusElement.textContent = `${nextModel.label} selected.`;
     setWorking(false);
     questionElement.focus();
+  }
+}
+
+/** Request the browser's high-performance WebGPU adapter without loading WebLLM. */
+async function requestGpuAdapter() {
+  if (!("gpu" in navigator)) return null;
+  try {
+    return await navigator.gpu.requestAdapter({ powerPreference: "high-performance" });
+  } catch (error) {
+    console.warn("smgen-assistant: WebGPU adapter detection failed", error);
+    return null;
   }
 }
 
@@ -645,24 +675,40 @@ window.addEventListener("message", (event) => {
 /** Load generated data and initialize the first-question interface. */
 async function start() {
   try {
-    const [loadedConfig, loadedCorpus] = await Promise.all([
+    const [loadedConfig, loadedCorpus, detectedAdapter] = await Promise.all([
       fetchJson("config.json"),
-      fetchJson("corpus.json")
+      fetchJson("corpus.json"),
+      requestGpuAdapter()
     ]);
     config = loadedConfig;
     corpus = loadedCorpus;
+    gpuAdapter = detectedAdapter;
     titleElement.textContent = loadedConfig.title;
-    configureModelPicker();
+    configureModelPicker(gpuAdapter);
+    if (evaluationMode) {
+      const navigatorDetails = /** @type {Navigator & {deviceMemory?: number}} */ (navigator);
+      /** @type {EvaluationWindow} */ (window).__smgenEvaluationDevice = {
+        userAgent: navigator.userAgent,
+        platform: navigator.platform,
+        deviceMemoryGB: navigatorDetails.deviceMemory ?? null,
+        ...(gpuAdapter ? buildDeviceReport(gpuAdapter, models) : { adapter: null, recommendedModelId: null, models: [] })
+      };
+    }
     restoreTranscript();
     renderTranscript();
     if (!("gpu" in navigator)) {
       statusElement.textContent = "WebGPU unavailable";
       modelNoteElement.textContent = "This browser does not provide WebGPU.";
+    } else if (!gpuAdapter) {
+      statusElement.textContent = "WebGPU unavailable";
+      modelNoteElement.textContent = "This browser could not find a WebGPU adapter.";
+    } else if (!selectedModel) {
+      statusElement.textContent = "No compatible model";
+      modelNoteElement.textContent = "The configured models do not match this WebGPU adapter.";
     } else {
       statusElement.textContent = "Starts with your first question";
-      if (selectedModel) modelNoteElement.textContent = modelNote(selectedModel);
-      questionElement.disabled = false;
-      submitButton.disabled = false;
+      modelNoteElement.textContent = modelNote(selectedModel);
+      setWorking(false);
     }
   } catch (error) {
     console.error("smgen-assistant: data failed to load", error);

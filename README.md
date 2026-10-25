@@ -88,34 +88,62 @@ greeting: Ask a question about this project.
 chunkCharacters: 4000
 
 models:
+  - id: gemma-2-2b-it-q4f16_1-MLC
+    label: Gemma 2 2B · f16
+    downloadMB: 1493
+    memoryMB: 1896
+    quality: 20
+  - id: gemma-2-2b-it-q4f32_1-MLC
+    label: Gemma 2 2B · f32
+    downloadMB: 1493
+    memoryMB: 2509
+    quality: 20
   - id: Qwen2.5-1.5B-Instruct-q4f32_1-MLC
-    label: Qwen2.5 1.5B · Faster
+    label: Qwen2.5 1.5B · Smaller
     downloadMB: 880
     memoryMB: 1889
-  - id: gemma-2-2b-it-q4f32_1-MLC
-    label: Gemma 2 2B · Stronger
-    downloadMB: 1400
-    memoryMB: 2509
+    quality: 10
 
 retrieval:
   maxChunks: 2
   maxCharacters: 3000
 ```
 
-The first entry is the initial choice. When `models` contains more than one
-entry, the visitor can select one before asking a question. Changing the choice
-releases the active engine and defers the new download until the next question.
-The choice persists for that assistant URL, and WebLLM caches each downloaded
-model separately.
+When `models` contains more than one entry, the visitor can select one before
+asking a question. Set `quality` to an author-assigned positive integer. The
+browser recommends the compatible model with the highest value. Equal values
+prefer the lower `memoryMB`, then the smaller `downloadMB`. This selects the f16
+Gemma build on adapters that expose `shader-f16` and the equivalent f32 build on
+other adapters. Without any `quality` values, the first compatible entry keeps
+the previous behavior. A compatible saved choice takes precedence over the
+recommendation.
+
+The picker disables choices whose WebGPU features or limits do not meet their
+declared requirements. An ID containing `q4f16` or `q0f16` automatically
+requires `shader-f16`. Use `requiredFeatures` for other WebGPU features and
+`minStorageBufferMB` when a model requires a larger storage buffer binding:
+
+```yaml
+  - id: example-model-q4f16_1-MLC
+    label: Example model
+    quality: 30
+    requiredFeatures: [shader-f16]
+    minStorageBufferMB: 256
+```
+
+Changing the choice releases the active engine and defers the new download
+until the next question. The choice persists for that assistant URL, and
+WebLLM caches each downloaded model separately.
 
 Use `model` with one mapping when the site should offer only one choice. This
 older form remains supported. Model IDs must exist in the model list included
 with WebLLM 0.2.81. Models with `f16` in their quantization name require a
 WebGPU adapter with `shader-f16`. The assistant checks WebLLM's required adapter
 limits before loading a model. WebGPU does not report available VRAM, so choose
-a model with a conservative `memoryMB` estimate. `downloadMB` and `memoryMB`
-inform the visitor; they do not constrain WebLLM. Omit either estimate when it
-is unknown.
+a model list that remains conservative for the intended devices. `memoryMB`
+informs the visitor and breaks equal quality ranks. It cannot prove that enough
+memory is free. `downloadMB` only informs the visitor. Omit either estimate when
+it is unknown.
 
 The configuration file can also supply `pages`, `output`, and `baseUrl`. Command flags override file settings. `BASE_URL` from the environment applies when neither the flag nor the file sets it.
 
