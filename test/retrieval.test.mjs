@@ -272,3 +272,29 @@ test("compound questions retain passages for each requested task", () => {
   assert.ok(deploymentIds.includes("actions"));
   assert.ok(deploymentIds.includes("public"));
 });
+
+test("referential output questions reuse the previous user topic", () => {
+  const pages = [
+    { id: "paths", sourceId: "config", title: "Configuration", heading: "Configuration > Project Paths", url: "/configuration.html#project-paths", content: "OUTPUT_DIR is the generated site directory. Its default is ./docs." },
+    { id: "ownership", sourceId: "config", title: "Configuration", heading: "Configuration > Output Ownership", url: "/configuration.html#output-ownership", content: "A successful build replaces OUTPUT_DIR completely." },
+    { id: "metadata", sourceId: "writing", title: "Writing Pages", heading: "Writing Pages > Directory Metadata", url: "/writing-pages.html#directory-metadata", content: "A directory .fm.yaml file configures its navigation group." },
+    { id: "license", sourceId: "license", title: "License", heading: "Redistribution", url: "/LICENSE.html#redistribution", content: "Redistribution may include generated files and directories." }
+  ];
+  const selected = retrieveChunks(pages, "Can I change that directory?", {
+    maxChunks: 2,
+    maxCharacters: 3000,
+    previousQuery: "Where does it put the finished files?"
+  });
+  assert.equal(selected[0]?.id, "paths");
+  assert.ok(selected.some(({ id }) => id === "ownership"));
+  assert.equal(selected.some(({ id }) => id === "metadata"), false);
+});
+
+test("a page menu opt-out is a focused retrieval", () => {
+  const pages = [
+    { id: "membership", sourceId: "navigation", title: "Navigation", heading: "Navigation > Select Menus from Pages", url: "/navigation.html#select-menus-from-pages", content: "Set one menu membership to false to opt out." },
+    { id: "frontmatter", sourceId: "writing", title: "Writing", heading: "Writing > Page Frontmatter", url: "/writing-pages.html#page-frontmatter", content: "Page frontmatter is YAML." }
+  ];
+  const selected = retrieveChunks(pages, "How can one page opt out?", { maxChunks: 2, maxCharacters: 3000 });
+  assert.deepEqual(selected.map(({ id }) => id), ["membership"]);
+});

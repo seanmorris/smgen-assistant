@@ -166,6 +166,9 @@ function modelOption(value, name, fallback) {
   const minStorageBufferMB = model.minStorageBufferMB === undefined && usesFallback
     ? fallback?.minStorageBufferMB
     : optionalModelMetric(model.minStorageBufferMB, `${name}.minStorageBufferMB`);
+  const minDeviceMemoryGB = model.minDeviceMemoryGB === undefined && usesFallback
+    ? fallback?.minDeviceMemoryGB
+    : optionalModelMetric(model.minDeviceMemoryGB, `${name}.minDeviceMemoryGB`);
   return {
     id,
     label,
@@ -173,7 +176,8 @@ function modelOption(value, name, fallback) {
     ...(memoryMB === undefined ? {} : { memoryMB }),
     ...(quality === undefined ? {} : { quality }),
     ...(requiredFeatures === undefined ? {} : { requiredFeatures }),
-    ...(minStorageBufferMB === undefined ? {} : { minStorageBufferMB })
+    ...(minStorageBufferMB === undefined ? {} : { minStorageBufferMB }),
+    ...(minDeviceMemoryGB === undefined ? {} : { minDeviceMemoryGB })
   };
 }
 

@@ -7,7 +7,10 @@ const LOW_VALUE_WORDS = new Set([
 ]);
 const QUERY_LOW_VALUE_WORDS = new Set([
   ...LOW_VALUE_WORDS,
-  "a", "an", "do", "does", "how", "i", "in", "is", "it", "me", "my", "of", "on", "one", "or", "please", "should", "site", "smgen", "tell", "to", "use", "what", "when", "where", "which", "who", "will", "would", "you"
+  "a", "an", "do", "does", "how", "i", "in", "is", "it", "me", "my", "of", "on", "one", "or", "please", "rss", "should", "site", "smgen", "tell", "to", "use", "what", "when", "where", "which", "who", "will", "would", "you"
+]);
+const LEADING_ACTION_WORDS = new Set([
+  "add", "build", "change", "configure", "copy", "create", "define", "edit", "enable", "generate", "initialize", "install", "link", "open", "place", "publish", "remove", "replace", "run", "select", "serve", "set", "upload", "write"
 ]);
 const GROUNDED_EQUIVALENTS = new Map([
   ["additional", ["custom"]],
@@ -183,6 +186,23 @@ function technicalLiterals(answer) {
 }
 
 /**
+ * Check a generated technical literal against one documentation section.
+ *
+ * Shell commands joined with `&&` or `;` are accepted only when every command
+ * appears independently in the section. This keeps a model from inventing a
+ * command while allowing it to combine documented setup steps on one line.
+ *
+ * @param {string} literal
+ * @param {string} documentation
+ */
+function literalHasSourceSupport(literal, documentation) {
+  const normalized = comparable(literal);
+  if (documentation.includes(normalized)) return true;
+  const commands = normalized.split(/\s*(?:&&|;)\s*/u).filter(Boolean);
+  return commands.length > 1 && commands.every((command) => documentation.includes(command));
+}
+
+/**
  * Produce conservative variants for checking paraphrased source words.
  *
  * @param {string} word
@@ -192,6 +212,7 @@ function groundedVariants(word) {
   if (word.length > 4 && word.endsWith("ing")) variants.add(word.slice(0, -3).replace(/(.)\1$/u, "$1"));
   if (word.length > 4 && word.endsWith("ed")) variants.add(word.slice(0, -2).replace(/(.)\1$/u, "$1"));
   if (word.length > 4 && word.endsWith("s")) variants.add(word.slice(0, -1));
+  if (word.length > 3 && !word.endsWith("s")) variants.add(`${word}s`);
   return [...variants];
 }
 
@@ -248,9 +269,9 @@ function validateQuestionCoverage(answer, sources, question) {
     && !QUERY_LOW_VALUE_WORDS.has(term)
     && groundedVariants(term).some((variant) => sourceTerms.has(variant)));
   const unique = [...new Set(relevant)];
-  if (unique.length < 3) return { ok: true };
+  if (!unique.length) return { ok: true };
   const covered = unique.filter((term) => groundedVariants(term).some((variant) => answerTerms.has(variant)));
-  const minimum = Math.max(2, Math.min(3, Math.ceil(unique.length * 0.3)));
+  const minimum = unique.length < 3 ? unique.length : Math.max(2, Math.min(8, Math.ceil(unique.length * 0.7)));
   if (covered.length < minimum) {
     return { ok: false, reason: "incomplete-answer", missing: unique.filter((term) => !covered.includes(term)).slice(0, 4) };
   }
@@ -288,15 +309,16 @@ function generatedSourceScore(text, source) {
   const words = [...new Set((text.toLocaleLowerCase("en-US").match(/[\p{L}\p{N}]+/gu) ?? [])
     .filter((word) => word.length > 2 && !LOW_VALUE_WORDS.has(word)))];
   const literals = technicalLiterals(text);
-  const segments = source.content.split(/\n\s*\n/gu).map(comparable).filter(Boolean);
-  return segments.reduce((best, documentation) => {
-    if (literals.some((literal) => !documentation.includes(comparable(literal)))) return best;
-    const sourceWords = new Set(documentation.toLocaleLowerCase("en-US").match(/[\p{L}\p{N}]+/gu) ?? []);
-    const supported = words.filter((word) => groundedVariants(word).some((variant) => sourceWords.has(variant))).length;
-    const ratio = words.length ? supported / words.length : 1;
-    if (supported < Math.min(2, words.length) || ratio < 0.6) return best;
-    return Math.max(best, supported * 10 + ratio);
-  }, -1);
+  const documentation = comparable(source.content);
+  if (literals.some((literal) => !literalHasSourceSupport(literal, documentation))) return -1;
+  const sourceWords = new Set(documentation.toLocaleLowerCase("en-US").match(/[\p{L}\p{N}]+/gu) ?? []);
+  const supported = words.filter((word) => groundedVariants(word).some((variant) => sourceWords.has(variant))).length;
+  const ratio = words.length ? supported / words.length : 1;
+  const firstWord = text.toLocaleLowerCase("en-US").match(/[\p{L}\p{N}]+/u)?.[0] ?? "";
+  const unsupportedAction = LEADING_ACTION_WORDS.has(firstWord)
+    && !groundedVariants(firstWord).some((variant) => sourceWords.has(variant));
+  if (unsupportedAction || supported < Math.min(2, words.length) || ratio < 0.5) return -1;
+  return supported * 10 + ratio;
 }
 
 /**
@@ -397,18 +419,19 @@ export function formatGeneratedAnswer(answer, sources, _finishReason, question =
   /** @type {Array<{content: string, source: number}>} */
   const matched = [];
   for (const [blockIndex, raw] of rawBlocks.entries()) {
-    const content = raw
+    const normalized = raw
       .replace(/^\s*(?:[-*+]|\d+\.)\s*/u, "")
       .replace(/\s*\[Source \d+\]\s*/gu, "")
       .trim();
-    if (!content || content.length > 280 || /^#{1,6}\s/u.test(content)) {
+    if (!normalized || normalized.length > 280 || /^#{1,6}\s/u.test(normalized) || /<\/?[a-z][a-z\d-]*(?:\s[^>]*)?>/iu.test(normalized)) {
       if (blockIndex === 0) return { ok: false, reason: "unsupported-content" };
       continue;
     }
-    if (!/[.!?`]$/u.test(content)) {
+    if (/:$/u.test(normalized)) {
       if (blockIndex === 0) return { ok: false, reason: "unsupported-content" };
       continue;
     }
+    const content = /[.!?]$/u.test(normalized) ? normalized : `${normalized}.`;
     const ranked = sources
       .map((source, index) => ({ index, score: generatedSourceScore(content, source) }))
       .filter((candidate) => candidate.score >= 0)

@@ -162,6 +162,15 @@ function scoreChunk(chunk, query, terms, currentUrl) {
   if (/\b(?:leftbarlink|leftbarshow|navigation_widgets|archive_title)\b/u.test(exact) && /legacy navigation$/u.test(heading)) {
     score += 96;
   }
+  if (/\b(?:finished|generated|output)\b.*\b(?:directory|files?|folder)\b/u.test(exact) && /project paths$/u.test(heading)) {
+    score += 88;
+  }
+  if (/\b(?:finished|generated|output)\b.*\b(?:directory|files?|folder)\b/u.test(exact) && /output ownership$/u.test(heading)) {
+    score += 64;
+  }
+  if (/\b(?:change|choose|set)\b.*\b(?:directory|folder)\b/u.test(exact) && /project paths$/u.test(heading)) {
+    score += 96;
+  }
   if (score > 0 && currentUrl && comparablePath(chunk.url) === comparablePath(currentUrl)) {
     score += 28;
   }
@@ -281,6 +290,7 @@ function focusedQuery(query) {
     || asksForTemplate
     || asksForPrecedence
     || asksForLegacyNavigation
+    || (asksForMenuMembership && !/\b(?:add|another|create|custom|make|new).*(?:menu|navigation)\b/u.test(value))
     || /\b(?:empty|new) (?:directory|folder)\b/u.test(value)
     || (/\b(?:where|which).*(?:put|store|write).*(?:content|page|pages|words)\b/u.test(value) && !asksForPageFrontmatter)
     || (/\b(?:add|another|create|custom|make|new).*(?:menu|navigation)\b/u.test(value) && !asksForMenuMembership)
@@ -311,6 +321,7 @@ function fitCandidate(selected, candidate, maxCharacters) {
  * @property {number} maxChunks
  * @property {number} maxCharacters
  * @property {string} [currentUrl]
+ * @property {string} [previousQuery]
  */
 
 /**
@@ -322,11 +333,12 @@ function fitCandidate(selected, candidate, maxCharacters) {
  * @returns {CorpusChunk[]}
  */
 export function retrieveChunks(chunks, query, options) {
-  const queryTerms = tokenize(query);
+  const searchQuery = options.previousQuery ? `${options.previousQuery} ${query}` : query;
+  const queryTerms = tokenize(searchQuery);
   if (!queryTerms.length) return [];
   const terms = weightedTerms(chunks, queryTerms);
   const ranked = chunks
-    .map((chunk, index) => ({ chunk, index, score: scoreChunk(chunk, query, terms, options.currentUrl ?? "") }))
+    .map((chunk, index) => ({ chunk, index, score: scoreChunk(chunk, searchQuery, terms, options.currentUrl ?? "") }))
     .filter((item) => item.score > 0)
     .sort((a, b) => b.score - a.score || a.index - b.index);
   const minimumScore = Math.max(8, (ranked[0]?.score ?? 0) * 0.35);

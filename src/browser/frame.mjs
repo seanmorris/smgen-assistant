@@ -30,6 +30,7 @@ import { renderMarkdown } from "./render.mjs";
 
 const assetBase = new URL("./", import.meta.url);
 const evaluationMode = new URL(location.href).searchParams.get("evaluation") === "1";
+const deviceMemoryGB = /** @type {Navigator & {deviceMemory?: number}} */ (navigator).deviceMemory ?? null;
 const transcriptKey = `smgen-assistant:transcript:v3:${assetBase.pathname}`;
 const modelKey = `smgen-assistant:model:${assetBase.pathname}`;
 const titleElement = /** @type {HTMLHeadingElement} */ (document.querySelector("#assistant-title"));
@@ -293,18 +294,18 @@ function modelNote(model, ready = false) {
 function configureModelPicker(adapter) {
   if (!config) return;
   models = Array.isArray(config.models) && config.models.length ? config.models : [config.model];
-  recommendedModel = adapter ? recommendModel(adapter, models) : null;
+  recommendedModel = adapter ? recommendModel(adapter, models, deviceMemoryGB) : null;
   let stored = "";
   try {
     stored = localStorage.getItem(modelKey) ?? "";
   } catch {}
   const storedModel = models.find(({ id }) => id === stored);
-  selectedModel = storedModel && (!adapter || adapterCompatibilityIssue(adapter, storedModel) === null)
+  selectedModel = storedModel && (!adapter || adapterCompatibilityIssue(adapter, storedModel, deviceMemoryGB) === null)
     ? storedModel
     : (recommendedModel ?? (adapter ? null : (models[0] ?? null)));
   modelSelectElement.replaceChildren();
   for (const model of models) {
-    const issue = adapter ? adapterCompatibilityIssue(adapter, model) : null;
+    const issue = adapter ? adapterCompatibilityIssue(adapter, model, deviceMemoryGB) : null;
     const option = document.createElement("option");
     option.value = model.id;
     option.disabled = issue !== null;
@@ -350,6 +351,7 @@ async function ensureEngine(activity) {
     engine = await module.createAssistantEngine({
       model: selectedModel,
       assetBase,
+      deviceMemoryGB,
       onProgress: (report) => {
         lastUpdateAt = performance.now();
         lastProgress = Math.max(0, Math.min(1, report.progress));
@@ -488,7 +490,12 @@ async function askQuestion(suppliedQuestion) {
     return;
   }
 
-  const retrieved = retrieveChunks(corpus.chunks, question, { ...config.retrieval, currentUrl: pageContext.url });
+  const previousQuestion = previousUserQuestion(question);
+  const retrieved = retrieveChunks(corpus.chunks, question, {
+    ...config.retrieval,
+    currentUrl: pageContext.url,
+    previousQuery: previousQuestion
+  });
   if (!retrieved.length) {
     const answer = /** @type {TranscriptMessage} */ ({
       role: "assistant",
@@ -517,7 +524,7 @@ async function askQuestion(suppliedQuestion) {
     const fitted = await fitPrompt(
       question,
       retrieved,
-      previousUserQuestion(question),
+      previousQuestion,
       (messages) => module.countPromptTokens(activeEngine, messages)
     );
     if (!fitted) {
@@ -686,12 +693,11 @@ async function start() {
     titleElement.textContent = loadedConfig.title;
     configureModelPicker(gpuAdapter);
     if (evaluationMode) {
-      const navigatorDetails = /** @type {Navigator & {deviceMemory?: number}} */ (navigator);
       /** @type {EvaluationWindow} */ (window).__smgenEvaluationDevice = {
         userAgent: navigator.userAgent,
         platform: navigator.platform,
-        deviceMemoryGB: navigatorDetails.deviceMemory ?? null,
-        ...(gpuAdapter ? buildDeviceReport(gpuAdapter, models) : { adapter: null, recommendedModelId: null, models: [] })
+        deviceMemoryGB,
+        ...(gpuAdapter ? buildDeviceReport(gpuAdapter, models, deviceMemoryGB) : { adapter: null, recommendedModelId: null, models: [] })
       };
     }
     restoreTranscript();

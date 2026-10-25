@@ -13,6 +13,7 @@ export const MAX_RESPONSE_CHARACTERS = 1200;
  * @property {AssistantModel} model
  * @property {URL} assetBase
  * @property {(report: InitProgressReport) => void} onProgress
+ * @property {number | null} [deviceMemoryGB]
  */
 
 export { adapterCompatibilityIssue, modelNeedsShaderF16 } from "./model-selection.mjs";
@@ -279,12 +280,13 @@ export async function releaseAssistantEngine(engine) {
  * Check the selected adapter before WebLLM compiles the model shaders.
  *
  * @param {AssistantModel} model
+ * @param {number | null} [deviceMemoryGB]
  */
-async function checkModelSupport(model) {
+async function checkModelSupport(model, deviceMemoryGB = null) {
   if (!("gpu" in navigator)) throw new Error("This browser does not provide WebGPU.");
   const adapter = await navigator.gpu.requestAdapter({ powerPreference: "high-performance" });
   if (!adapter) throw new Error("This browser could not find a WebGPU adapter.");
-  const issue = adapterCompatibilityIssue(adapter, model);
+  const issue = adapterCompatibilityIssue(adapter, model, deviceMemoryGB);
   if (issue) throw new Error(issue);
 }
 
@@ -295,7 +297,7 @@ async function checkModelSupport(model) {
  * @returns {Promise<MLCEngineInterface>}
  */
 export async function createAssistantEngine(options) {
-  await checkModelSupport(options.model);
+  await checkModelSupport(options.model, options.deviceMemoryGB);
   const { prebuiltAppConfig, WebWorkerMLCEngine } = await import("@mlc-ai/web-llm");
   const engineConfig = {
     initProgressCallback: options.onProgress,

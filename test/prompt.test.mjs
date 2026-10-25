@@ -26,10 +26,11 @@ test("prompt instructions require faithful cited paraphrases", () => {
   assert.match(messages[0]?.content ?? "", /Prefer earlier sources/iu);
   assert.match(messages[0]?.content ?? "", /Cover every part of the question/iu);
   assert.match(messages[0]?.content ?? "", /ignore a supplied source when it does not help/iu);
-  assert.match(messages.at(-1)?.content ?? "", /Answer the question directly with one to four short Markdown bullets/iu);
-  assert.match(messages.at(-1)?.content ?? "", /no more than 90 words total/iu);
-  assert.match(messages.at(-1)?.content ?? "", /one bullet for each requested action or decision/iu);
-  assert.match(messages.at(-1)?.content ?? "", /interface adds them after validation/iu);
+  assert.match(messages.at(-1)?.content ?? "", /Answer directly in one to four short Markdown bullets/iu);
+  assert.match(messages.at(-1)?.content ?? "", /at most 90 words/iu);
+  assert.match(messages.at(-1)?.content ?? "", /Never use code fences or HTML/iu);
+  assert.match(messages.at(-1)?.content ?? "", /one bullet per requested action or decision/iu);
+  assert.match(messages.at(-1)?.content ?? "", /interface adds them/iu);
   assert.match(messages.at(-1)?.content ?? "", /Do not infer a step, prerequisite, or purpose/iu);
   assert.match(messages.at(-1)?.content ?? "", /^Question: How do I build\?/u);
 });

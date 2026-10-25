@@ -293,10 +293,18 @@ test("model recommendations use compatibility, author quality, and resource esti
     { id: "fallback-q4f32_1", label: "Fallback", quality: 10, memoryMB: 1900 },
     { id: "strong-q4f32_1", label: "Strong f32", quality: 20, memoryMB: 2600 },
     { id: "strong-q4f16_1", label: "Strong f16", quality: 20, memoryMB: 1900 },
-    { id: "largest-q4f16_1", label: "Largest", quality: 30, memoryMB: 3500, requiredFeatures: ["future-feature"] }
+    { id: "largest-q4f16_1", label: "Largest", quality: 30, memoryMB: 3500, requiredFeatures: ["future-feature"] },
+    { id: "high-memory-q4f16_1", label: "High memory", quality: 40, memoryMB: 5700, minDeviceMemoryGB: 16 }
   ];
   assert.equal(recommendModel(f32Adapter, models)?.id, "strong-q4f32_1");
   assert.equal(recommendModel(f16Adapter, models)?.id, "strong-q4f16_1");
+  assert.equal(recommendModel(f16Adapter, models, 8)?.id, "strong-q4f16_1");
+  assert.equal(recommendModel(f16Adapter, models, 32)?.id, "high-memory-q4f16_1");
+  assert.match(adapterCompatibilityIssue(
+    f16Adapter,
+    /** @type {import('../src/shared/types.mjs').AssistantModel} */ (models[4]),
+    8
+  ) ?? "", /at least 16 GB/u);
   assert.match(adapterCompatibilityIssue(
     f16Adapter,
     /** @type {import('../src/shared/types.mjs').AssistantModel} */ (models[3])
@@ -306,8 +314,8 @@ test("model recommendations use compatibility, author quality, and resource esti
     label: "Large buffer",
     minStorageBufferMB: 300
   }) ?? "", /storage buffer binding size/u);
-  const report = buildDeviceReport(f16Adapter, models);
-  assert.equal(report.recommendedModelId, "strong-q4f16_1");
+  const report = buildDeviceReport(f16Adapter, models, 32);
+  assert.equal(report.recommendedModelId, "high-memory-q4f16_1");
   assert.deepEqual(/** @type {{features: string[]}} */ (report.adapter).features, ["shader-f16"]);
 });
 

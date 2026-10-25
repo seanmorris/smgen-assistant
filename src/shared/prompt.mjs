@@ -15,13 +15,13 @@ Prefer earlier sources. Use a later source only when it adds a fact that directl
 Cover every part of the question before adding supporting detail. Ignore a supplied source when it does not help answer the question.
 Select only the most useful facts. Do not enumerate settings or examples unless the question asks for them. Do not write a complete guide or exhaust the sources.`;
 
-const OUTPUT_INSTRUCTIONS = `Answer the question directly with one to four short Markdown bullets and no more than 90 words total.
+const OUTPUT_INSTRUCTIONS = `Answer directly in one to four short Markdown bullets, at most 90 words.
 Paraphrase the sources naturally. Do not infer a step, prerequisite, or purpose that the sources do not state.
-Use one bullet for each requested action or decision before adding detail.
-Begin each bullet with a hyphen and write a complete sentence. Keep each bullet within one source.
-Put commands, filenames, configuration keys, and literal values in backticks.
-Do not write citations or source labels; the interface adds them after validation.
-Do not use nested bullets, bold labels, a heading, a preface, a closing note, or a fact absent from the sources.`;
+Use one bullet per requested action or decision before adding detail.
+Start each bullet with a hyphen and a complete sentence. Keep each bullet within one source.
+Use inline backticks for commands, filenames, configuration keys, and literal values. Never use code fences or HTML.
+Do not write citations or source labels; the interface adds them.
+Do not use nested bullets, bold labels, headings, prefaces, closing notes, or facts absent from the sources.`;
 
 /**
  * Report whether a question needs the previous user turn to resolve a reference.

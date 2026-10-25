@@ -88,6 +88,12 @@ greeting: Ask a question about this project.
 chunkCharacters: 4000
 
 models:
+  - id: Qwen3-8B-q4f16_1-MLC
+    label: Qwen3 8B · Large
+    downloadMB: 4624
+    memoryMB: 5696
+    minDeviceMemoryGB: 16
+    quality: 30
   - id: gemma-2-2b-it-q4f16_1-MLC
     label: Gemma 2 2B · f16
     downloadMB: 1493
@@ -118,10 +124,11 @@ other adapters. Without any `quality` values, the first compatible entry keeps
 the previous behavior. A compatible saved choice takes precedence over the
 recommendation.
 
-The picker disables choices whose WebGPU features or limits do not meet their
-declared requirements. An ID containing `q4f16` or `q0f16` automatically
-requires `shader-f16`. Use `requiredFeatures` for other WebGPU features and
-`minStorageBufferMB` when a model requires a larger storage buffer binding:
+The picker disables choices whose reported device memory, WebGPU features, or
+limits do not meet their declared requirements. An ID containing `q4f16` or
+`q0f16` automatically requires `shader-f16`. Use `requiredFeatures` for other
+WebGPU features, `minStorageBufferMB` for a larger storage buffer binding, and
+`minDeviceMemoryGB` to keep a large model off smaller devices:
 
 ```yaml
   - id: example-model-q4f16_1-MLC
@@ -129,7 +136,14 @@ requires `shader-f16`. Use `requiredFeatures` for other WebGPU features and
     quality: 30
     requiredFeatures: [shader-f16]
     minStorageBufferMB: 256
+    minDeviceMemoryGB: 16
 ```
+
+The browser reports approximate system memory when it supports the Device
+Memory API. A model above a reported memory tier is unavailable. When the
+browser does not report memory, models with `minDeviceMemoryGB` remain
+selectable. The browser recommends a compatible model without a memory tier
+when one is available.
 
 Changing the choice releases the active engine and defers the new download
 until the next question. The choice persists for that assistant URL, and
@@ -139,11 +153,11 @@ Use `model` with one mapping when the site should offer only one choice. This
 older form remains supported. Model IDs must exist in the model list included
 with WebLLM 0.2.81. Models with `f16` in their quantization name require a
 WebGPU adapter with `shader-f16`. The assistant checks WebLLM's required adapter
-limits before loading a model. WebGPU does not report available VRAM, so choose
-a model list that remains conservative for the intended devices. `memoryMB`
-informs the visitor and breaks equal quality ranks. It cannot prove that enough
-memory is free. `downloadMB` only informs the visitor. Omit either estimate when
-it is unknown.
+limits before loading a model. WebGPU does not report available VRAM, and the
+Device Memory API does not report free memory. Choose conservative thresholds
+for the intended devices. `memoryMB` informs the visitor and breaks equal
+quality ranks. It cannot prove that enough memory is free. `downloadMB` only
+informs the visitor. Omit either estimate when it is unknown.
 
 The configuration file can also supply `pages`, `output`, and `baseUrl`. Command flags override file settings. `BASE_URL` from the environment applies when neither the flag nor the file sets it.
 

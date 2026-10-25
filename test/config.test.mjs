@@ -61,6 +61,7 @@ test("a model list preserves order and optional resource estimates", async () =>
       "    quality: 10",
       "    requiredFeatures: [shader-f16]",
       "    minStorageBufferMB: 256",
+      "    minDeviceMemoryGB: 16",
       "  - id: larger-model",
       "",
     ].join("\n"));
@@ -75,7 +76,8 @@ test("a model list preserves order and optional resource estimates", async () =>
         memoryMB: 1000,
         quality: 10,
         requiredFeatures: ["shader-f16"],
-        minStorageBufferMB: 256
+        minStorageBufferMB: 256,
+        minDeviceMemoryGB: 16
       },
       { id: "larger-model", label: "larger-model" }
     ]);
@@ -96,6 +98,8 @@ test("model configuration rejects ambiguous and duplicate choices", async () => 
     await writeFile(filename, "models:\n  - id: model\n    requiredFeatures: []\n");
     await assert.rejects(parseBuildOptions(["build"], {}, directory), /nonempty sequence/u);
     await writeFile(filename, "models:\n  - id: model\n    quality: 0\n");
+    await assert.rejects(parseBuildOptions(["build"], {}, directory), /positive integer/u);
+    await writeFile(filename, "models:\n  - id: model\n    minDeviceMemoryGB: 0\n");
     await assert.rejects(parseBuildOptions(["build"], {}, directory), /positive integer/u);
   } finally {
     await rm(directory, { recursive: true, force: true });

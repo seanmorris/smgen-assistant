@@ -33,6 +33,7 @@
  * @property {number} [quality]
  * @property {string[]} [requiredFeatures]
  * @property {number} [minStorageBufferMB]
+ * @property {number} [minDeviceMemoryGB]
  */
 
 /**

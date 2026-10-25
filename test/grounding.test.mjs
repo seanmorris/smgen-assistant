@@ -144,6 +144,54 @@ test("generated prose rejects claims assembled from separate source paragraphs",
   });
 });
 
+test("generated prose keeps related facts from one documentation section", () => {
+  const primary = sources[0];
+  assert.ok(primary);
+  const source = {
+    ...primary,
+    content: [
+      "Initialize an empty directory:",
+      "```bash\nmkdir my-site\ncd my-site\nsmgen init\n```",
+      "Set the site identity in `.smgen-rc`.",
+      "Replace `pages/index.md` with your first page.",
+      "Build and serve the site with `smgen build` and `smgen serve`.",
+      "Open <http://localhost:8000>."
+    ].join("\n\n")
+  };
+  const answer = [
+    "- Create an empty directory named `my-site` and navigate into it: `mkdir my-site && cd my-site`",
+    "- Initialize SMGen and set the site identity in `.smgen-rc` with `smgen init`.",
+    "- Replace `pages/index.md` with your first page and build the site with `smgen build`.",
+    "- Serve and view the site using `smgen serve`, then open <http://localhost:8000>"
+  ].join("\n");
+  const displayed = answer.split("\n").map((line) => `${/[.!?]$/u.test(line) ? line : `${line}.`} [Source 1]`).join("\n");
+  assert.deepEqual(formatGeneratedAnswer(answer, [source], "stop"), {
+    ok: true,
+    answer: displayed,
+    sources: [source],
+    filtered: false
+  });
+});
+
+test("generated prose keeps a documented command introduced with generic wording", () => {
+  const primary = sources[0];
+  assert.ok(primary);
+  const source = {
+    ...primary,
+    content: "Build and serve the site with `smgen build`. On Linux, `smgen watch` builds, serves, and watches the source directories."
+  };
+  assert.deepEqual(formatGeneratedAnswer(
+    "- Use `smgen build` to generate the site or `smgen watch` to build and serve it automatically.",
+    [source],
+    "stop"
+  ), {
+    ok: true,
+    answer: "- Use `smgen build` to generate the site or `smgen watch` to build and serve it automatically. [Source 1]",
+    sources: [source],
+    filtered: false
+  });
+});
+
 test("structured answers accept a JSON fence or short model preface", () => {
   const json = JSON.stringify({ items: [{ text: "Run `smgen init`.", source: 1 }] });
   for (const answer of [`\`\`\`json\n${json}\n\`\`\``, `Here is the answer:\n${json}`]) {

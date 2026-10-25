@@ -33,10 +33,15 @@ export function modelRequiredFeatures(model) {
  *
  * @param {GPUAdapter} adapter
  * @param {AssistantModel | string} model
+ * @param {number | null} [deviceMemoryGB]
  * @returns {string | null}
  */
-export function adapterCompatibilityIssue(adapter, model) {
+export function adapterCompatibilityIssue(adapter, model, deviceMemoryGB = null) {
   const configuredBufferMB = typeof model === "string" ? undefined : model.minStorageBufferMB;
+  const configuredMemoryGB = typeof model === "string" ? undefined : model.minDeviceMemoryGB;
+  if (configuredMemoryGB !== undefined && deviceMemoryGB !== null && deviceMemoryGB < configuredMemoryGB) {
+    return `This model is configured for devices with at least ${configuredMemoryGB} GB of memory.`;
+  }
   const checks = [
     ["maximum buffer size", adapter.limits.maxBufferSize, 256 * MEBIBYTE],
     ["maximum storage buffer binding size", adapter.limits.maxStorageBufferBindingSize,
@@ -65,15 +70,20 @@ export function adapterCompatibilityIssue(adapter, model) {
  *
  * @param {GPUAdapter} adapter
  * @param {AssistantModel[]} models
+ * @param {number | null} [deviceMemoryGB]
  * @returns {AssistantModel | null}
  */
-export function recommendModel(adapter, models) {
+export function recommendModel(adapter, models, deviceMemoryGB = null) {
   const compatible = models
     .map((model, index) => ({ model, index }))
-    .filter(({ model }) => adapterCompatibilityIssue(adapter, model) === null);
+    .filter(({ model }) => adapterCompatibilityIssue(adapter, model, deviceMemoryGB) === null);
   if (!compatible.length) return null;
-  if (!compatible.some(({ model }) => model.quality !== undefined)) return compatible[0]?.model ?? null;
-  compatible.sort((left, right) => {
+  const recommended = deviceMemoryGB === null
+    ? compatible.filter(({ model }) => model.minDeviceMemoryGB === undefined)
+    : compatible;
+  const candidates = recommended.length ? recommended : compatible;
+  if (!candidates.some(({ model }) => model.quality !== undefined)) return candidates[0]?.model ?? null;
+  candidates.sort((left, right) => {
     const quality = (right.model.quality ?? 0) - (left.model.quality ?? 0);
     if (quality) return quality;
     const memory = (left.model.memoryMB ?? Number.POSITIVE_INFINITY)
@@ -83,7 +93,7 @@ export function recommendModel(adapter, models) {
       - (right.model.downloadMB ?? Number.POSITIVE_INFINITY);
     return download || left.index - right.index;
   });
-  return compatible[0]?.model ?? null;
+  return candidates[0]?.model ?? null;
 }
 
 /**
@@ -91,11 +101,12 @@ export function recommendModel(adapter, models) {
  *
  * @param {GPUAdapter} adapter
  * @param {AssistantModel[]} models
+ * @param {number | null} [deviceMemoryGB]
  * @returns {Record<string, unknown>}
  */
-export function buildDeviceReport(adapter, models) {
+export function buildDeviceReport(adapter, models, deviceMemoryGB = null) {
   const info = adapter.info ?? { vendor: "", architecture: "", device: "", description: "" };
-  const recommended = recommendModel(adapter, models);
+  const recommended = recommendModel(adapter, models, deviceMemoryGB);
   return {
     adapter: {
       info: {
@@ -114,7 +125,7 @@ export function buildDeviceReport(adapter, models) {
     },
     recommendedModelId: recommended?.id ?? null,
     models: models.map((model) => {
-      const issue = adapterCompatibilityIssue(adapter, model);
+      const issue = adapterCompatibilityIssue(adapter, model, deviceMemoryGB);
       return { id: model.id, compatible: issue === null, issue };
     })
   };
