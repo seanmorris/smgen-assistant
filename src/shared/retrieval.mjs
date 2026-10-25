@@ -4,7 +4,17 @@
 
 const WORD = /[\p{L}\p{N}_./:+#-]+/gu;
 const LOW_VALUE_TERMS = new Set([
-  "a", "an", "and", "are", "do", "does", "explain", "for", "how", "i", "in", "is", "it", "me", "of", "on", "tell", "the", "this", "through", "to", "use", "walk", "what", "with", "you", "your"
+  "a", "an", "and", "are", "do", "does", "explain", "for", "how", "i", "in", "is", "it", "me", "of", "on", "smgen", "tell", "the", "this", "through", "to", "use", "walk", "what", "with", "you", "your"
+]);
+const RELATED_TERMS = new Map([
+  ["make", ["create"]],
+  ["making", ["create"]],
+  ["configure", ["configuration", "settings"]],
+  ["configured", ["configuration", "settings"]],
+  ["configuring", ["configuration", "settings"]],
+  ["website", ["site"]],
+  ["websites", ["site"]],
+  ["setup", ["install", "configure"]]
 ]);
 
 /**
@@ -31,7 +41,7 @@ export function tokenize(value) {
  * @param {string} term
  */
 function termVariants(term) {
-  const variants = new Set([term]);
+  const variants = new Set([term, ...(RELATED_TERMS.get(term) ?? [])]);
   if (!/[_./:+#-]/u.test(term) && term.length > 4) {
     if (term.endsWith("ing")) {
       const base = term.slice(0, -3).replace(/(.)\1$/u, "$1");
@@ -47,6 +57,16 @@ function termVariants(term) {
     else if (term.endsWith("s")) variants.add(term.slice(0, -1));
   }
   return [...variants].filter((variant) => variant.length > 1);
+}
+
+/**
+ * Normalize directory URLs to the index document used in the corpus.
+ *
+ * @param {string} value
+ */
+function comparablePath(value) {
+  const pathname = new URL(value, "https://smgen.invalid").pathname;
+  return pathname.endsWith("/") ? `${pathname}index.html` : pathname;
 }
 
 /**
@@ -90,10 +110,10 @@ function scoreChunk(chunk, query, terms, currentUrl) {
     score += Math.min(occurrences(heading, term), 3) * (technical ? 10 : 6) * weight;
     score += Math.min(occurrences(content, term), 6) * (technical ? 4 : 1.5) * weight;
   }
-  if (/\b(?:begin|build|create|generate|start|use)\b/u.test(exact) && /\b(?:create a site|getting started|quick start)\b/u.test(`${title} ${heading}`)) {
+  if (/\b(?:begin|build|create|generate|make|start|use)\b/u.test(exact) && /\b(?:create a site|getting started|quick start)\b/u.test(`${title} ${heading}`)) {
     score += 36;
   }
-  if (score > 0 && currentUrl && new URL(chunk.url, "https://smgen.invalid").pathname === new URL(currentUrl, "https://smgen.invalid").pathname) {
+  if (score > 0 && currentUrl && comparablePath(chunk.url) === comparablePath(currentUrl)) {
     score += 28;
   }
   return score;

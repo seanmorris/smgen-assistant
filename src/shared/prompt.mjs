@@ -9,12 +9,16 @@ export const MAX_OUTPUT_TOKENS = 384;
 export const MAX_PROMPT_TOKENS = CONTEXT_TOKENS - MAX_OUTPUT_TOKENS;
 export const MAX_QUESTION_CHARACTERS = 2000;
 
-const INSTRUCTIONS = `Answer by faithfully rephrasing only the supplied documentation.
-Do not add commands, options, filenames, features, or facts that are absent from the sources.
-Copy every command, code identifier, configuration key, and literal value exactly.
-If the sources do not answer the question, say that the documentation does not cover it.
-Keep the answer concise. Cite every paragraph or list item with one or more citations such as [Source 1].
-The citation labels refer only to the numbered sources below.`;
+const INSTRUCTIONS = `Use only the numbered documentation sources below.
+Never add a fact from memory. Copy commands, filenames, configuration keys, and literal values exactly from the cited source.`;
+
+const OUTPUT_INSTRUCTIONS = `Return a JSON object with an "items" array.
+Each item must contain short "text" and the number of its supporting "source".
+Each item must cover a different fact from the sources.
+The source number is the [Source N] label above a passage, not the item's position. Reuse a source number when it supports several items.
+Return one to four items and fewer than 80 words total.
+Put commands, filenames, configuration keys, and literal values in backticks.
+Do not include facts that the sources do not state.`;
 
 /**
  * Build the model messages from a question and selected source passages.
@@ -29,7 +33,7 @@ export function promptMessages(question, sources, previousQuestion = "") {
     content: `${INSTRUCTIONS}\n\n${formatContext(sources)}`
   }]);
   if (previousQuestion) messages.push({ role: "user", content: `Earlier question for context: ${previousQuestion}` });
-  messages.push({ role: "user", content: question });
+  messages.push({ role: "user", content: `Question: ${question}\n\n${OUTPUT_INSTRUCTIONS}` });
   return messages;
 }
 

@@ -117,7 +117,9 @@ The builder strips YAML frontmatter and splits Markdown at headings. It keeps fe
 
 The browser ranks chunks with exact phrase, title, heading, technical identifier, body, term rarity, and current-page matches. It favors useful passages from more than one page. Each retrieval receives at most `retrieval.maxChunks` chunks and `retrieval.maxCharacters` formatted characters.
 
-The prompt asks the model to rephrase only the selected passages, preserve commands and configuration values, and cite each paragraph or list item. Citation markers and the folded source list link to the exact documented section. The assistant sends the latest earlier question as optional follow-up context. It never sends prior model answers back to the model.
+The prompt asks the model to rephrase only the selected passages in no more than four short bullets, preserve commands and configuration values, and cite each bullet. Citation markers and the folded source list link to the exact documented section. The assistant sends the latest earlier question as optional follow-up context. It never sends prior model answers back to the model.
+
+The frame holds generated text until it can check the complete answer. It rejects an answer that stops at the token limit, repeats itself, cites an unknown source, or introduces wording and technical literals that the cited passage does not support. A rejected answer becomes a link and a folded copy of the closest exact documentation passage instead of displaying unsupported claims.
 
 The browser loads the full corpus when the visitor opens the assistant. A few megabytes of source Markdown fits this design. A corpus measured in tens of megabytes should use a partitioned index so the browser can fetch candidates on demand.
 

@@ -56,3 +56,29 @@ test("retrieval favors build instructions and varied source pages", () => {
   assert.equal(selected[0]?.id, "start");
   assert.equal(new Set(selected.map((chunk) => chunk.sourceId)).size, 2);
 });
+
+test("retrieval maps website language and root URLs to create-site guidance", () => {
+  const pages = [
+    { id: "start", sourceId: "start", title: "Getting Started", heading: "Create a Site", url: "/index.html#create-a-site", content: "Create a site with smgen init, then build and serve it." },
+    { id: "config", sourceId: "config", title: "Configuration", heading: "Precedence", url: "/configuration.html#precedence", content: "SMGen loads configuration from several files." }
+  ];
+  const selected = retrieveChunks(pages, "Explain how to make a website with SMGen", {
+    maxChunks: 2,
+    maxCharacters: 1000,
+    currentUrl: "http://localhost:9000/"
+  });
+  assert.equal(selected[0]?.id, "start");
+});
+
+test("retrieval treats the project name as context when a specific topic is present", () => {
+  const pages = [
+    { id: "start", sourceId: "start", title: "Getting Started", heading: "Create a Site", url: "/index.html#create-a-site", content: "Create an SMGen site." },
+    { id: "config", sourceId: "config", title: "Configuration", heading: "Precedence", url: "/configuration.html#precedence", content: "SMGen configuration settings use .smgen.yaml." }
+  ];
+  const selected = retrieveChunks(pages, "How do I configure SMGen?", {
+    maxChunks: 2,
+    maxCharacters: 1000,
+    currentUrl: "http://localhost:9000/"
+  });
+  assert.equal(selected[0]?.id, "config");
+});

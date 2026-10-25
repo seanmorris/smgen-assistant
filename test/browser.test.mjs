@@ -10,7 +10,8 @@ import {
   isCacheNetworkError,
   loadModelWithRetry,
   modelNeedsShaderF16,
-  serviceWorkerScriptUrl
+  serviceWorkerScriptUrl,
+  streamAnswer
 } from "../src/browser/engine-client.mjs";
 import { countRuntimePromptTokens } from "../src/browser/prompt-tokens.mjs";
 import { renderMarkdown, safeLink } from "../src/browser/render.mjs";
@@ -228,6 +229,36 @@ test("model loading retries only Cache API network failures", async () => {
   }));
   await assert.rejects(loadModelWithRetry(failingEngine, "model-q0f32"), /Device was lost/u);
   assert.equal(attempts, 1);
+});
+
+test("answer streaming reports truncation and discourages repetition", async () => {
+  /** @type {Record<string, unknown> | undefined} */
+  let request;
+  const engine = /** @type {import('@mlc-ai/web-llm').MLCEngineInterface} */ (/** @type {unknown} */ ({
+    interruptGenerate() {},
+    chat: { completions: { create: async (/** @type {Record<string, unknown>} */ options) => {
+      request = options;
+      return (async function* chunks() {
+        yield { choices: [{ delta: { content: "Partial" }, finish_reason: null }] };
+        yield { choices: [{ delta: {}, finish_reason: "length" }] };
+      })();
+    } } }
+  }));
+  let text = "";
+  const finishReason = await streamAnswer(
+    engine,
+    [{ role: "user", content: "Question" }],
+    (part) => { text += part; },
+    new AbortController().signal
+  );
+  assert.equal(text, "Partial");
+  assert.equal(finishReason, "length");
+  assert.equal(request?.temperature, 0);
+  assert.equal(request?.max_tokens, 256);
+  assert.equal(request?.repetition_penalty, 1.1);
+  assert.equal(request?.frequency_penalty, 0.5);
+  assert.equal(/** @type {{type?: string}} */ (request?.response_format).type, "json_object");
+  assert.match(/** @type {{schema?: string}} */ (request?.response_format).schema ?? "", /"maxItems":4/u);
 });
 
 test("service worker uses the assistant directory as its scope", async () => {

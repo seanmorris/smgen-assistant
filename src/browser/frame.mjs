@@ -1,6 +1,7 @@
 // @ts-check
 
 import { retrieveChunks } from "../shared/retrieval.mjs";
+import { formatGroundedAnswer } from "../shared/grounding.mjs";
 import { fitPrompt, MAX_QUESTION_CHARACTERS } from "../shared/prompt.mjs";
 import { renderMarkdown } from "./render.mjs";
 
@@ -21,10 +22,11 @@ import { renderMarkdown } from "./render.mjs";
  * @property {"user" | "assistant"} role
  * @property {string} content
  * @property {SourceLink[]} [sources]
+ * @property {string} [excerpt]
  */
 
 const assetBase = new URL("./", import.meta.url);
-const transcriptKey = `smgen-assistant:transcript:v2:${assetBase.pathname}`;
+const transcriptKey = `smgen-assistant:transcript:v3:${assetBase.pathname}`;
 const titleElement = /** @type {HTMLHeadingElement} */ (document.querySelector("#assistant-title"));
 const statusElement = /** @type {HTMLParagraphElement} */ (document.querySelector("#status"));
 const liveStatusElement = /** @type {HTMLParagraphElement} */ (document.querySelector("#live-status"));
@@ -84,11 +86,6 @@ function restoreTranscript() {
   } catch {}
 }
 
-/** Report whether the conversation was already resting at its bottom edge. */
-function isNearBottom() {
-  return messagesElement.scrollHeight - messagesElement.scrollTop - messagesElement.clientHeight < 48;
-}
-
 /** Scroll the conversation to its newest content. */
 function scrollToBottom() {
   messagesElement.scrollTop = messagesElement.scrollHeight;
@@ -122,6 +119,37 @@ function sourceList(sources) {
 }
 
 /**
+ * Build a folded, scrollable copy of the closest exact documentation passage.
+ *
+ * @param {string | undefined} excerpt
+ */
+function excerptDetails(excerpt) {
+  if (!excerpt) return null;
+  const details = document.createElement("details");
+  details.className = "documentation-excerpt";
+  const summary = document.createElement("summary");
+  summary.textContent = "Show relevant documentation";
+  const content = document.createElement("div");
+  renderMarkdown(content, excerpt);
+  details.append(summary, content);
+  return details;
+}
+
+/**
+ * Render assistant Markdown with any exact excerpt and folded source links.
+ *
+ * @param {HTMLElement} article
+ * @param {TranscriptMessage} message
+ */
+function renderAssistantMessage(article, message) {
+  renderMarkdown(article, message.content, message.sources ?? []);
+  const excerpt = excerptDetails(message.excerpt);
+  if (excerpt) article.append(excerpt);
+  const sources = sourceList(message.sources ?? []);
+  if (sources) article.append(sources);
+}
+
+/**
  * Render one conversation turn.
  *
  * @param {TranscriptMessage} message
@@ -130,10 +158,8 @@ function sourceList(sources) {
 function appendMessage(message, scroll = true) {
   const article = document.createElement("article");
   article.className = `message ${message.role}`;
-  if (message.role === "assistant") renderMarkdown(article, message.content, message.sources ?? []);
+  if (message.role === "assistant") renderAssistantMessage(article, message);
   else article.textContent = message.content;
-  const sources = sourceList(message.sources ?? []);
-  if (sources) article.append(sources);
   messagesElement.append(article);
   if (scroll) scrollToBottom();
   return article;
@@ -313,33 +339,28 @@ async function askQuestion(suppliedQuestion) {
       sources: sourceLinks(fitted.sources)
     });
     const article = activity.article;
-    article.className = "message assistant";
-    article.replaceChildren();
+    activity.label.textContent = "Writing a grounded answer…";
     statusElement.textContent = "Answering";
     liveStatusElement.textContent = "The assistant is answering.";
-    let frameRequest = 0;
-    let stickToBottom = true;
-    /** Render accumulated stream text at most once per animation frame. */
-    const renderStream = () => {
-      frameRequest = 0;
-      renderMarkdown(article, assistantMessage.content, assistantMessage.sources ?? []);
-      if (stickToBottom) scrollToBottom();
-    };
-    await module.streamAnswer(activeEngine, fitted.messages, (text) => {
-      stickToBottom = isNearBottom();
+    const finishReason = await module.streamAnswer(activeEngine, fitted.messages, (text) => {
       assistantMessage.content += text;
-      if (!frameRequest) frameRequest = requestAnimationFrame(renderStream);
     }, generation.signal);
-    if (frameRequest) {
-      cancelAnimationFrame(frameRequest);
-      renderStream();
+    if (generation.signal.aborted) throw new DOMException("The answer was stopped.", "AbortError");
+    const grounding = formatGroundedAnswer(assistantMessage.content, fitted.sources, finishReason);
+    if (!grounding.ok) {
+      console.warn("smgen-assistant: rejected ungrounded answer", grounding);
+      const best = fitted.sources[0];
+      assistantMessage.content = best
+        ? `I could not verify a grounded summary. Open **${best.heading || best.title}** for the closest documented answer. [Source 1]`
+        : "I could not verify a grounded answer from the selected documentation.";
+      assistantMessage.sources = best ? sourceLinks([best]) : [];
+      if (best) assistantMessage.excerpt = best.content;
+    } else {
+      assistantMessage.content = grounding.answer;
+      assistantMessage.sources = sourceLinks(grounding.sources);
     }
-    if (!assistantMessage.content.trim()) {
-      assistantMessage.content = generation.signal.aborted ? "Answer stopped." : "I could not produce an answer from those passages.";
-    }
-    renderMarkdown(article, assistantMessage.content, assistantMessage.sources ?? []);
-    const sources = sourceList(assistantMessage.sources ?? []);
-    if (sources) article.append(sources);
+    article.className = "message assistant";
+    renderAssistantMessage(article, assistantMessage);
     transcript.push({ role: "user", content: question }, assistantMessage);
     transcript = transcript.slice(-20);
     storeTranscript();

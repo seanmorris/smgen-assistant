@@ -20,10 +20,10 @@ async function countCharacters(messages) {
 
 test("prompt instructions require faithful cited paraphrases", () => {
   const messages = promptMessages("How do I build?", sources);
-  assert.match(messages[0]?.content ?? "", /faithfully rephrasing only/iu);
-  assert.match(messages[0]?.content ?? "", /Do not add commands/iu);
-  assert.match(messages[0]?.content ?? "", /Cite every paragraph or list item/iu);
-  assert.equal(messages.at(-1)?.content, "How do I build?");
+  assert.match(messages[0]?.content ?? "", /Use only the numbered documentation sources/iu);
+  assert.match(messages[0]?.content ?? "", /Copy commands, filenames, configuration keys/iu);
+  assert.match(messages.at(-1)?.content ?? "", /Return a JSON object with an "items" array/iu);
+  assert.match(messages.at(-1)?.content ?? "", /^Question: How do I build\?/u);
 });
 
 test("prompt fitting drops old context and low-ranked sources", async () => {

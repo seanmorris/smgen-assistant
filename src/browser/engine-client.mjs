@@ -277,23 +277,54 @@ export async function createAssistantEngine(options) {
  * @param {Array<{role: "system" | "user" | "assistant", content: string}>} messages
  * @param {(text: string) => void} onText
  * @param {AbortSignal} signal
+ * @returns {Promise<string | null>}
  */
 export async function streamAnswer(engine, messages, onText, signal) {
   /** Stop the active WebLLM generation request. */
   const stop = () => { void engine.interruptGenerate(); };
   signal.addEventListener("abort", stop, { once: true });
+  let finishReason = null;
   try {
     const response = await engine.chat.completions.create({
       messages,
       stream: true,
       temperature: 0,
-      max_tokens: 384
+      max_tokens: 256,
+      repetition_penalty: 1.1,
+      frequency_penalty: 0.5,
+      response_format: {
+        type: "json_object",
+        schema: JSON.stringify({
+          type: "object",
+          properties: {
+            items: {
+              type: "array",
+              minItems: 1,
+              maxItems: 4,
+              items: {
+                type: "object",
+                properties: {
+                  text: { type: "string", maxLength: 180 },
+                  source: { type: "integer", minimum: 1, maximum: 4 }
+                },
+                required: ["text", "source"],
+                additionalProperties: false
+              }
+            }
+          },
+          required: ["items"],
+          additionalProperties: false
+        })
+      }
     });
     for await (const chunk of response) {
       if (signal.aborted) break;
-      const text = chunk.choices[0]?.delta.content;
+      const choice = chunk.choices[0];
+      const text = choice?.delta.content;
       if (text) onText(text);
+      if (choice?.finish_reason) finishReason = choice.finish_reason;
     }
+    return finishReason;
   } finally {
     signal.removeEventListener("abort", stop);
   }

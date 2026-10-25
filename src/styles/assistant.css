@@ -49,6 +49,9 @@ main.assistant { display: grid; grid-template-rows: auto 1fr auto; height: 100%;
 .sources { border-top: 1px solid var(--border); font-size: .82rem; margin-top: .65rem; padding-top: .5rem; }
 .sources summary { color: var(--muted); cursor: pointer; font-weight: 700; }
 .sources ul { margin: .45rem 0 0; padding-left: 1.2rem; }
+.documentation-excerpt { border-top: 1px solid var(--border); font-size: .88rem; margin-top: .65rem; padding-top: .5rem; }
+.documentation-excerpt summary { color: var(--muted); cursor: pointer; font-weight: 700; }
+.documentation-excerpt > div { max-height: 18rem; overflow: auto; padding-right: .25rem; }
 .activity { width: min(100%, 30rem); }
 .activity progress { display: block; margin-top: .5rem; width: 100%; }
 .activity p { color: var(--muted); font-size: .85rem; }

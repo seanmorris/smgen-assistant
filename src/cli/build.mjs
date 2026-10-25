@@ -1,6 +1,6 @@
 // @ts-check
 
-import { access, cp, lstat, mkdir, mkdtemp, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { access, chmod, cp, lstat, mkdir, mkdtemp, realpath, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildCorpus } from "./corpus.mjs";
@@ -89,6 +89,7 @@ export async function buildSiteAssistant(config) {
     await cp(browserAssets, stage, { recursive: true, force: true });
     await writeFile(path.join(stage, "corpus.json"), stableJson(corpus), "utf8");
     await writeFile(path.join(stage, "config.json"), stableJson(config.publicConfig), "utf8");
+    await chmod(stage, 0o755);
 
     try {
       await rename(destination, backup);
