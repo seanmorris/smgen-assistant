@@ -27,14 +27,23 @@ class FakeElement {
     this.href = "";
     this.textContent = "";
     this.className = "";
+    /** @type {Record<string, string>} */
     this.dataset = {};
+    /** @type {Record<string, string>} */
     this.style = {};
     /** @type {unknown[]} */
     this.children = [];
     this.offsetWidth = 400;
     this.offsetHeight = 624;
     this.attributes = new Map();
-    this.contentWindow = { postMessage() {}, focus() {} };
+    /** @type {unknown[]} */
+    const messages = [];
+    this.contentWindow = {
+      messages,
+      /** Record messages sent to a fake child frame. @param {unknown} message */
+      postMessage(message) { messages.push(message); },
+      focus() {}
+    };
     this.classList = { toggle() {} };
     /** @type {Map<string, Function>} */
     this.listeners = new Map();
@@ -64,6 +73,9 @@ test("loader does not create or request the iframe before activation", async () 
   const events = new Map();
   const values = new Map();
   const persistentValues = new Map();
+  let hostTheme = "dark";
+  /** @type {Function | undefined} */
+  let notifyThemeChange;
   const context = {
     URL,
     location: { href: "https://example.test/project/page.html" },
@@ -78,6 +90,7 @@ test("loader does not create or request the iframe before activation", async () 
     document: {
       currentScript: { src: "https://example.test/project/__smgen-assistant/loader.js" },
       title: "Page",
+      documentElement: { classList: { contains: (/** @type {string} */ name) => name === hostTheme } },
       head,
       body,
       querySelector: () => null,
@@ -87,7 +100,14 @@ test("loader does not create or request the iframe before activation", async () 
     window: {
       innerWidth: 1280,
       innerHeight: 800,
+      matchMedia: () => ({ matches: false, addEventListener() {} }),
       addEventListener: (/** @type {string} */ type, /** @type {Function} */ listener) => events.set(type, listener)
+    },
+    MutationObserver: class {
+      /** Retain the observer callback so the test can emulate a host theme toggle. @param {Function} callback */
+      constructor(callback) { notifyThemeChange = callback; }
+      /** Observe calls do not require a DOM implementation in this host test. */
+      observe() {}
     }
   };
   const source = await readFile(new URL("../dist/browser/loader.js", import.meta.url), "utf8");
@@ -100,6 +120,21 @@ test("loader does not create or request the iframe before activation", async () 
   const frame = /** @type {FakeElement | undefined} */ (shell?.children[0]);
   assert.equal(frame?.tagName, "IFRAME");
   assert.equal(frame?.src, "https://example.test/project/__smgen-assistant/frame.html");
+  assert.equal(shell?.dataset.theme, "dark");
+  assert.equal(frame?.style.visibility, "hidden");
+  frame?.dispatch("load");
+  assert.equal(/** @type {{type?: string, theme?: string}} */ (frame?.contentWindow.messages.at(-1)).type, "smgen-assistant:theme");
+  assert.equal(/** @type {{type?: string, theme?: string}} */ (frame?.contentWindow.messages.at(-1)).theme, "dark");
+  events.get("message")?.({
+    origin: "https://example.test",
+    source: frame?.contentWindow,
+    data: { type: "smgen-assistant:theme-applied" }
+  });
+  assert.equal(frame?.style.visibility, "visible");
+  hostTheme = "light";
+  notifyThemeChange?.();
+  assert.equal(shell?.dataset.theme, "light");
+  assert.equal(/** @type {{type?: string, theme?: string}} */ (frame?.contentWindow.messages.at(-1)).theme, "light");
   assert.equal(persistentValues.has("smgen-assistant:size:/project/__smgen-assistant/"), false);
 });
 
@@ -134,6 +169,15 @@ test("assistant messages do not inherit the root grid layout", async () => {
   assert.doesNotMatch(css, /(?:^|\})\s*\.assistant\s*\{[^}]*display:\s*grid/su);
   assert.match(css, /\.message\s*\{[^}]*overflow-wrap:\s*anywhere[^}]*width:\s*fit-content/su);
   assert.match(css, /\.messages\s*\{[^}]*overflow-x:\s*hidden/su);
+});
+
+test("assistant colors use the theme supplied by the host page", async () => {
+  const css = await readFile(new URL("../src/styles/assistant.css", import.meta.url), "utf8");
+  const frameSource = await readFile(new URL("../src/browser/frame.mjs", import.meta.url), "utf8");
+  assert.match(css, /:root\[data-theme="dark"\]\s*\{[^}]*color-scheme:\s*dark/su);
+  assert.doesNotMatch(css, /light-dark\(/u);
+  assert.match(frameSource, /document\.documentElement\.dataset\.theme = event\.data\.theme/u);
+  assert.match(frameSource, /smgen-assistant:theme-applied/u);
 });
 
 test("prompt counting uses the loaded tokenizer and conversation template", () => {

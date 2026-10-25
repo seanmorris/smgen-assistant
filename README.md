@@ -129,6 +129,8 @@ The browser loads the full corpus when the visitor opens the assistant. A few me
 
 Visitors can resize the panel with its upper-left handle or the handle's arrow-key controls. The expand button fills the viewport and restores the previous size. The custom size persists for the assistant path. Small screens always use the available viewport.
 
+The panel follows a `light` or `dark` class on the host document. If the host does not set either class, it follows the visitor's browser preference. Theme changes apply to the panel and iframe together.
+
 The frame registers `service-worker.js` with the `__smgen-assistant/` scope. That scope keeps it separate from a root service worker such as php-wasm's request handler. If the service-worker engine cannot start, the frame retries with a dedicated worker.
 
 The service worker can be terminated by the browser. WebLLM checks the requested model when a new client reconnects and reloads it from browser storage when required.

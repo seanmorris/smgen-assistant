@@ -11,6 +11,15 @@
   const minimumWidth = 320;
   const minimumHeight = 360;
   const defaultSize = { width: 400, height: 624 };
+  const darkPreference = window.matchMedia?.("(prefers-color-scheme: dark)");
+
+  /** Read the host site's explicit theme, with the browser preference as a fallback. */
+  const readTheme = () => {
+    const classes = document.documentElement?.classList;
+    if (classes?.contains("dark")) return "dark";
+    if (classes?.contains("light")) return "light";
+    return darkPreference?.matches ? "dark" : "light";
+  };
 
   /**
    * Store the open state when tab storage is available.
@@ -47,7 +56,7 @@
   };
 
   const style = document.createElement("style");
-  style.textContent = `.smgen-assistant-launcher{position:fixed;right:1rem;bottom:1rem;z-index:2147483000;width:3.25rem;height:3.25rem;border:0;border-radius:50%;background:#182536;color:#fff;box-shadow:0 5px 22px #0005;font:700 1rem/1 system-ui;cursor:pointer}.smgen-assistant-launcher:focus-visible,.smgen-assistant-resize:focus-visible{outline:3px solid #64b5f6;outline-offset:3px}.smgen-assistant-shell{position:fixed;right:1rem;bottom:1rem;z-index:2147482999;min-width:20rem;min-height:22.5rem;max-width:calc(100vw - 2rem);max-height:calc(100dvh - 2rem);border-radius:.75rem;background:#fff;box-shadow:0 10px 40px #0006}.smgen-assistant-shell[hidden]{display:none}.smgen-assistant-frame{display:block;width:100%;height:100%;border:0;border-radius:inherit;background:#fff}.smgen-assistant-resize{position:absolute;left:-.45rem;top:-.45rem;z-index:1;width:1.4rem;height:1.4rem;border:1px solid #b9c4d0;border-radius:50%;background:#fff;color:#182536;box-shadow:0 2px 8px #0004;cursor:nwse-resize;font:700 .8rem/1 system-ui;padding:0;touch-action:none}.smgen-assistant-shell.is-maximized{inset:.5rem;width:auto!important;height:auto!important;max-width:none;max-height:none}.smgen-assistant-shell.is-maximized .smgen-assistant-resize{display:none}@media(max-width:34rem){.smgen-assistant-shell{inset:.5rem;width:calc(100vw - 1rem)!important;height:calc(100dvh - 1rem)!important;min-width:0;min-height:0;max-width:none;max-height:none}.smgen-assistant-resize{display:none}}@media(prefers-reduced-motion:no-preference){.smgen-assistant-launcher{transition:transform .15s ease}.smgen-assistant-launcher:hover{transform:scale(1.04)}}`;
+  style.textContent = `.smgen-assistant-launcher{position:fixed;right:1rem;bottom:1rem;z-index:2147483000;width:3.25rem;height:3.25rem;border:0;border-radius:50%;background:#182536;color:#fff;box-shadow:0 5px 22px #0005;font:700 1rem/1 system-ui;cursor:pointer}.smgen-assistant-launcher:focus-visible,.smgen-assistant-resize:focus-visible{outline:3px solid #64b5f6;outline-offset:3px}.smgen-assistant-shell{--smgen-assistant-surface:#fff;--smgen-assistant-text:#182536;--smgen-assistant-border:#b9c4d0;position:fixed;right:1rem;bottom:1rem;z-index:2147482999;min-width:20rem;min-height:22.5rem;max-width:calc(100vw - 2rem);max-height:calc(100dvh - 2rem);border-radius:.75rem;background:var(--smgen-assistant-surface);box-shadow:0 10px 40px #0006}.smgen-assistant-shell[data-theme=dark]{--smgen-assistant-surface:#111923;--smgen-assistant-text:#edf4fa;--smgen-assistant-border:#344354}.smgen-assistant-shell[hidden]{display:none}.smgen-assistant-frame{display:block;width:100%;height:100%;border:0;border-radius:inherit;background:var(--smgen-assistant-surface)}.smgen-assistant-resize{position:absolute;left:-.45rem;top:-.45rem;z-index:1;width:1.4rem;height:1.4rem;border:1px solid var(--smgen-assistant-border);border-radius:50%;background:var(--smgen-assistant-surface);color:var(--smgen-assistant-text);box-shadow:0 2px 8px #0004;cursor:nwse-resize;font:700 .8rem/1 system-ui;padding:0;touch-action:none}.smgen-assistant-shell.is-maximized{inset:.5rem;width:auto!important;height:auto!important;max-width:none;max-height:none}.smgen-assistant-shell.is-maximized .smgen-assistant-resize{display:none}@media(max-width:34rem){.smgen-assistant-shell{inset:.5rem;width:calc(100vw - 1rem)!important;height:calc(100dvh - 1rem)!important;min-width:0;min-height:0;max-width:none;max-height:none}.smgen-assistant-resize{display:none}}@media(prefers-reduced-motion:no-preference){.smgen-assistant-launcher{transition:transform .15s ease}.smgen-assistant-launcher:hover{transform:scale(1.04)}}`;
   document.head.append(style);
 
   const button = document.createElement("button");
@@ -65,6 +74,7 @@
   let frame = null;
   let size = restoreSize();
   let maximized = false;
+  let theme = readTheme();
 
   /**
    * Restrict a requested panel size to the visible viewport.
@@ -96,6 +106,16 @@
     type: "smgen-assistant:layout",
     maximized
   }, expectedOrigin);
+
+  /** Apply the host theme to the panel chrome and its isolated frame. */
+  const syncTheme = () => {
+    theme = readTheme();
+    if (shell) shell.dataset.theme = theme;
+    frame?.contentWindow?.postMessage({
+      type: "smgen-assistant:theme",
+      theme
+    }, expectedOrigin);
+  };
 
   /** Hide the assistant while retaining its in-tab state. */
   const close = () => {
@@ -174,12 +194,14 @@
     if (!frame) {
       shell = document.createElement("div");
       shell.className = "smgen-assistant-shell";
+      shell.dataset.theme = theme;
       shell.setAttribute("role", "dialog");
       shell.setAttribute("aria-label", "Documentation assistant");
       frame = document.createElement("iframe");
       frame.className = "smgen-assistant-frame";
       frame.title = "Documentation assistant";
       frame.src = new URL("frame.html", assetBase).href;
+      frame.style.visibility = "hidden";
       frame.setAttribute("allow", "webgpu");
       const resize = document.createElement("button");
       resize.type = "button";
@@ -191,7 +213,7 @@
       frame.addEventListener("load", () => {
         sendContext();
         sendLayout();
-        frame?.contentWindow?.focus();
+        syncTheme();
       }, { once: true });
       shell.append(frame, resize);
       document.body.append(shell);
@@ -205,6 +227,7 @@
     frame.contentWindow?.focus();
     sendContext();
     sendLayout();
+    syncTheme();
   };
 
   button.addEventListener("click", open);
@@ -219,9 +242,18 @@
     if (event.data.type === "smgen-assistant:ready") {
       sendContext();
       sendLayout();
+      syncTheme();
+    }
+    if (event.data.type === "smgen-assistant:theme-applied" && frame) {
+      frame.style.visibility = "visible";
+      frame.contentWindow?.focus();
     }
     if (event.data.type === "smgen-assistant:close") close();
     if (event.data.type === "smgen-assistant:toggle-maximize") toggleMaximized();
   });
+  if (typeof MutationObserver !== "undefined" && document.documentElement) {
+    new MutationObserver(syncTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+  }
+  darkPreference?.addEventListener?.("change", syncTheme);
   if (restoreOpenState()) open();
 })();

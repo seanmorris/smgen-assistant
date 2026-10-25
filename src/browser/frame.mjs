@@ -438,6 +438,10 @@ window.addEventListener("message", (event) => {
     maximizeButton.setAttribute("aria-label", maximized ? "Restore assistant size" : "Expand assistant");
     maximizeButton.title = maximized ? "Restore assistant size" : "Expand assistant";
   }
+  if (event.data.type === "smgen-assistant:theme" && (event.data.theme === "light" || event.data.theme === "dark")) {
+    document.documentElement.dataset.theme = event.data.theme;
+    window.parent.postMessage({ type: "smgen-assistant:theme-applied" }, location.origin);
+  }
 });
 
 /** Load generated data and initialize the first-question interface. */

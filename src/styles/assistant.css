@@ -1,14 +1,32 @@
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
   font: 15px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --surface: light-dark(#fff, #111923);
-  --raised: light-dark(#f1f5f9, #1c2938);
-  --text: light-dark(#142033, #edf4fa);
-  --muted: light-dark(#596779, #a8b5c4);
-  --accent: light-dark(#075ea8, #70b9f5);
-  --border: light-dark(#d6dde6, #344354);
+  --surface: #fff;
+  --raised: #f1f5f9;
+  --text: #142033;
+  --muted: #596779;
+  --accent: #075ea8;
+  --accent-text: #fff;
+  --border: #d6dde6;
+  --error: #b42318;
+  --code-surface: #18212d;
+  --inline-code-surface: #dfe7ef;
   background: var(--surface);
   color: var(--text);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface: #111923;
+  --raised: #1c2938;
+  --text: #edf4fa;
+  --muted: #a8b5c4;
+  --accent: #70b9f5;
+  --accent-text: #07111b;
+  --border: #344354;
+  --error: #ff8a80;
+  --code-surface: #081019;
+  --inline-code-surface: #2b3a4b;
 }
 
 * { box-sizing: border-box; }
@@ -31,19 +49,19 @@ main.assistant { display: grid; grid-template-rows: auto 1fr auto; height: 100%;
 
 .messages { min-height: 0; min-width: 0; overflow-x: hidden; overflow-y: auto; padding: .85rem; }
 .message { border-radius: .6rem; clear: both; margin: 0 0 .75rem; max-width: min(94%, 44rem); min-width: 0; overflow-wrap: anywhere; padding: .6rem .75rem; width: fit-content; }
-.message.user { background: var(--accent); color: light-dark(#fff, #07111b); margin-left: auto; white-space: pre-wrap; }
+.message.user { background: var(--accent); color: var(--accent-text); margin-left: auto; white-space: pre-wrap; }
 .message.assistant { background: var(--raised); margin-right: auto; }
 .message.notice { border: 1px solid var(--border); width: min(100%, 30rem); }
-.message.error { border-left: .25rem solid light-dark(#b42318, #ff8a80); }
+.message.error { border-left: .25rem solid var(--error); }
 .message > :first-child { margin-top: 0; }
 .message > :last-child { margin-bottom: 0; }
 .message h2, .message h3, .message h4, .message h5, .message h6 { font-size: 1em; margin: .8rem 0 .35rem; }
 .message p { margin: .45rem 0; }
 .message ol, .message ul { margin: .45rem 0; padding-left: 1.35rem; }
 .message li + li { margin-top: .3rem; }
-.message pre { background: light-dark(#18212d, #081019); border-radius: .35rem; color: #edf4fa; max-width: 100%; overflow: auto; padding: .65rem; white-space: pre; }
+.message pre { background: var(--code-surface); border-radius: .35rem; color: #edf4fa; max-width: 100%; overflow: auto; padding: .65rem; white-space: pre; }
 .message code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .9em; }
-.message :not(pre) > code { background: light-dark(#dfe7ef, #2b3a4b); border-radius: .2rem; padding: .08rem .25rem; }
+.message :not(pre) > code { background: var(--inline-code-surface); border-radius: .2rem; padding: .08rem .25rem; }
 .message a, .sources a { color: var(--accent); }
 .citation { white-space: nowrap; }
 .sources { border-top: 1px solid var(--border); font-size: .82rem; margin-top: .65rem; padding-top: .5rem; }
@@ -63,7 +81,7 @@ main.assistant { display: grid; grid-template-rows: auto 1fr auto; height: 100%;
 #model-note { min-width: 0; }
 #character-count { flex: none; }
 .actions { display: flex; gap: .5rem; margin-top: .5rem; }
-.composer button { background: var(--accent); border: 0; border-radius: .35rem; color: light-dark(#fff, #07111b); font-weight: 700; padding: .5rem .8rem; }
+.composer button { background: var(--accent); border: 0; border-radius: .35rem; color: var(--accent-text); font-weight: 700; padding: .5rem .8rem; }
 .composer .secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
 .visually-hidden { clip: rect(0 0 0 0); clip-path: inset(50%); height: 1px; overflow: hidden; position: absolute; white-space: nowrap; width: 1px; }
 
