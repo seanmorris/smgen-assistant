@@ -1,0 +1,28 @@
+title: Ask smgen-assistant
+greeting: Ask how to install, configure, embed, or develop smgen-assistant.
+chunkCharacters: 4000
+retrieval:
+  maxChunks: 2
+  maxCharacters: 3000
+models:
+  - id: Qwen3-8B-q4f16_1-MLC
+    label: "Qwen3 8B: Best answers"
+    downloadMB: 4624
+    memoryMB: 5696
+    minDeviceMemoryGB: 16
+    quality: 40
+  - id: gemma-2-2b-it-q4f16_1-MLC
+    label: "Gemma 2 2B: Efficient f16"
+    downloadMB: 1493
+    memoryMB: 1896
+    quality: 30
+  - id: gemma-2-2b-it-q4f32_1-MLC
+    label: "Gemma 2 2B: Compatible f32"
+    downloadMB: 1493
+    memoryMB: 2509
+    quality: 20
+  - id: Qwen2.5-1.5B-Instruct-q4f32_1-MLC
+    label: "Qwen2.5 1.5B: Smallest"
+    downloadMB: 880
+    memoryMB: 1889
+    quality: 10

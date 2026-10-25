@@ -2,6 +2,8 @@
 
 smgen-assistant adds a local AI documentation assistant to an [SMGen](https://github.com/seanmorris/smgen) site. It builds a static search corpus from the site's Markdown and runs [WebLLM](https://github.com/mlc-ai/web-llm) in the visitor's browser.
 
+The [hosted documentation](https://seanmorris.github.io/smgen-assistant/) covers installation, configuration, content preparation, browser behavior, deployment, and development.
+
 The initial page loads one small script. It fetches the generated configuration and checks the WebGPU adapter before showing the launcher. The assistant frame, corpus, WebLLM runtime, worker, and model wait until the visitor opens the assistant. The visitor can type immediately. The first question starts the model download and continues automatically when the model is ready.
 
 ## Requirements
@@ -17,7 +19,8 @@ The browser loads a 2,048-token context and reserves 384 tokens for each answer.
 Add the package to the site project:
 
 ```sh
-npm install --save-dev smgen-assistant
+npm install --save-dev \
+  https://github.com/seanmorris/smgen-assistant/releases/download/v0.1.21/smgen-assistant-0.1.21.tgz
 ```
 
 Build the assistant after SMGen has generated the site:

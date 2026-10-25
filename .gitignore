@@ -1,5 +1,7 @@
 node_modules/
 dist/
+docs/
+.smgen-core/
 coverage/
 *.tgz
 .DS_Store

@@ -1,0 +1,31 @@
+PRODUCT_NAME: smgen-assistant
+TAGLINE: Local answers from static documentation
+ORGANIZATION: Sean Morris
+TITLE_PREFIX: smgen-assistant
+
+HIGHLIGHT_STYLE: zenburn
+DEFAULT_THEME: theme-assistant
+DEV_PORT: 8100
+
+STYLES:
+  - /default.css
+  - /site.css
+
+DEFER_SCRIPTS:
+  - /main.js
+  - /theme-variant.js
+
+BODY_SCRIPTS:
+  - /__smgen-assistant/loader.js
+
+SEARCH_ENABLED: 0
+
+MENUS:
+  documentation:
+    label: Documentation
+    renderer: tree
+    hierarchy: source
+    showLabel: true
+
+MENU_REGIONS:
+  sidebar: [documentation]
