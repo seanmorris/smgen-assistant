@@ -108,6 +108,30 @@ test("structured answers allow connective wording around an exact command", () =
   });
 });
 
+test("structured answers allow grounded paraphrases with new wording", () => {
+  const baseSource = sources[0];
+  assert.ok(baseSource);
+  const pluginSource = {
+    ...baseSource,
+    content: "Menu plugins can register a custom renderer for a named menu type."
+  };
+  const answer = JSON.stringify({ items: [{
+    text: "Plugins let authors define additional menu types with their own renderer.",
+    source: 1
+  }] });
+  assert.deepEqual(formatGroundedAnswer(answer, [pluginSource], "stop"), {
+    ok: true,
+    answer: "- Plugins let authors define additional menu types with their own renderer. [Source 1]",
+    sources: [pluginSource],
+    filtered: false
+  });
+});
+
+test("structured answers still reject prose unrelated to its source", () => {
+  const answer = JSON.stringify({ items: [{ text: "Bootstrap automatically uploads remote assets.", source: 1 }] });
+  assert.deepEqual(formatGroundedAnswer(answer, sources, "stop"), { ok: false, reason: "unsupported-content" });
+});
+
 test("extractive fallback adds short command blocks to concise prose", () => {
   const baseSource = sources[0];
   assert.ok(baseSource);

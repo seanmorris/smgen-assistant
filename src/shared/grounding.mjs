@@ -3,11 +3,13 @@
 /** @typedef {import('./types.mjs').CorpusChunk} CorpusChunk */
 
 const LOW_VALUE_WORDS = new Set([
-  "about", "after", "also", "and", "are", "before", "can", "each", "for", "from", "into", "its", "need", "only", "running", "that", "the", "then", "this", "through", "using", "with", "your"
+  "about", "after", "also", "and", "are", "author", "authors", "before", "can", "each", "for", "from", "into", "its", "let", "lets", "may", "need", "only", "own", "running", "that", "the", "their", "them", "then", "this", "through", "using", "with", "your"
 ]);
 const GROUNDED_EQUIVALENTS = new Map([
+  ["additional", ["custom"]],
   ["create", ["initialize"]],
   ["creating", ["initialize"]],
+  ["define", ["register"]],
   ["generate", ["generated", "build"]],
   ["initialize", ["init"]],
   ["navigate", ["cd"]],
@@ -111,16 +113,19 @@ function groundedVariants(word) {
 }
 
 /**
- * Require every meaningful prose word to occur in, or conservatively map to, its source.
+ * Require enough shared topic words to keep a paraphrase tied to its source.
  *
  * @param {string} text
  * @param {CorpusChunk} source
  */
-function wordingIsGrounded(text, source) {
-  const documentation = comparable(source.content).toLocaleLowerCase("en-US");
+function wordingHasSourceSupport(text, source) {
+  const documentation = new Set(comparable(source.content).toLocaleLowerCase("en-US").match(/[\p{L}\p{N}]+/gu) ?? []);
   const words = [...new Set((text.toLocaleLowerCase("en-US").match(/[\p{L}\p{N}]+/gu) ?? [])
     .filter((word) => word.length > 2 && !LOW_VALUE_WORDS.has(word)))];
-  return words.every((word) => groundedVariants(word).some((variant) => documentation.includes(variant)));
+  if (!words.length) return true;
+  const supported = words.filter((word) => groundedVariants(word).some((variant) => documentation.has(variant))).length;
+  const minimumSupported = words.length >= 5 ? 2 : 1;
+  return supported >= minimumSupported && supported / words.length >= 0.4;
 }
 
 /**
@@ -221,7 +226,7 @@ export function formatGroundedAnswer(answer, sources, finishReason) {
       if (supportedSource >= 0) source = supportedSource + 1;
     }
     const sourceChunk = sources[source - 1];
-    if (!sourceChunk || !wordingIsGrounded(content, sourceChunk)) continue;
+    if (!sourceChunk || !wordingHasSourceSupport(content, sourceChunk)) continue;
     const candidate = `- ${content} [Source ${source}]`;
     if (!validateGroundedAnswer(candidate, sources, finishReason).ok) continue;
     if (!items.some((item) => comparable(item.content).toLocaleLowerCase("en-US") === comparable(content).toLocaleLowerCase("en-US"))) {
