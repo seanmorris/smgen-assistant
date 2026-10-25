@@ -1,5 +1,7 @@
 // @ts-check
 
+import { questionIntents } from "./intent.mjs";
+
 /** @typedef {import('./types.mjs').CorpusChunk} CorpusChunk */
 
 const WORD = /[\p{L}\p{N}_./:+#-]+/gu;
@@ -20,6 +22,7 @@ const RELATED_TERMS = new Map([
   ["setup", ["install", "configure"]]
 ]);
 const MAX_SOURCE_CHARACTERS = 1200;
+const STRONG_INTENT_RELEVANCE = 14;
 
 /**
  * Normalize text for case-insensitive local matching.
@@ -36,7 +39,9 @@ function normalized(value) {
  * @param {string} value
  */
 export function tokenize(value) {
-  return (normalized(value).match(WORD) ?? []).filter((term) => term.length > 1 || /[_./:+#-]/u.test(term));
+  return (normalized(value).match(WORD) ?? [])
+    .map((term) => term.replace(/[.:]+$/u, ""))
+    .filter((term) => term.length > 1 || /[_./:+#-]/u.test(term));
 }
 
 /**
@@ -96,11 +101,14 @@ function occurrences(haystack, needle) {
  * @param {string} query
  * @param {Array<{value: string, weight: number}>} terms
  * @param {string} currentUrl
+ * @param {string[]} intents
+ * @returns {{score: number, strongIntentMatch: boolean}}
  */
-function scoreChunk(chunk, query, terms, currentUrl) {
+function scoreChunk(chunk, query, terms, currentUrl, intents) {
   const title = normalized(chunk.title);
   const heading = normalized(chunk.heading);
   const content = normalized(chunk.content);
+  const keywords = normalized(chunk.keywords?.join(" ") ?? "");
   const exact = normalized(query.trim());
   let score = 0;
   if (exact.length > 2) {
@@ -112,6 +120,7 @@ function scoreChunk(chunk, query, terms, currentUrl) {
     const technical = /[_./:+#-]/u.test(term);
     score += Math.min(occurrences(title, term), 3) * (technical ? 12 : 8) * weight;
     score += Math.min(occurrences(heading, term), 3) * (technical ? 10 : 6) * weight;
+    score += Math.min(occurrences(keywords, term), 3) * (technical ? 12 : 8) * weight;
     score += Math.min(occurrences(content, term), 6) * (technical ? 4 : 1.5) * weight;
   }
   if (/\b(?:begin|build|create|generate|make|start)\b/u.test(exact) && /\b(?:create a site|getting started|quick start)\b/u.test(`${title} ${heading}`)) {
@@ -171,10 +180,13 @@ function scoreChunk(chunk, query, terms, currentUrl) {
   if (/\b(?:change|choose|set)\b.*\b(?:directory|folder)\b/u.test(exact) && /project paths$/u.test(heading)) {
     score += 96;
   }
+  const matchesIntent = intents.some((intent) => chunk.intents?.includes(intent));
+  const strongIntentMatch = matchesIntent && score >= STRONG_INTENT_RELEVANCE;
+  if (score > 0 && matchesIntent) score += 36;
   if (score > 0 && currentUrl && comparablePath(chunk.url) === comparablePath(currentUrl)) {
     score += 28;
   }
-  return score;
+  return { score, strongIntentMatch };
 }
 
 /**
@@ -188,7 +200,7 @@ function weightedTerms(chunks, queryTerms) {
   const variants = [...new Set(useful.flatMap(termVariants))];
   return variants.map((value) => {
     const frequency = chunks.reduce((count, chunk) => {
-      const searchable = normalized(`${chunk.title}\n${chunk.heading}\n${chunk.content}`);
+      const searchable = normalized(`${chunk.title}\n${chunk.heading}\n${chunk.keywords?.join(" ") ?? ""}\n${chunk.content}`);
       return count + Number(searchable.includes(value));
     }, 0);
     return { value, weight: Math.log((chunks.length + 1) / (frequency + 1)) + 1 };
@@ -337,9 +349,13 @@ export function retrieveChunks(chunks, query, options) {
   const queryTerms = tokenize(searchQuery);
   if (!queryTerms.length) return [];
   const terms = weightedTerms(chunks, queryTerms);
-  const ranked = chunks
-    .map((chunk, index) => ({ chunk, index, score: scoreChunk(chunk, searchQuery, terms, options.currentUrl ?? "") }))
-    .filter((item) => item.score > 0)
+  const intents = questionIntents(query);
+  const scored = chunks
+    .map((chunk, index) => ({ chunk, index, ...scoreChunk(chunk, searchQuery, terms, options.currentUrl ?? "", intents) }))
+    .filter((item) => item.score > 0);
+  const hasStrongTaggedMatch = intents.length > 0 && scored.some(({ strongIntentMatch }) => strongIntentMatch);
+  const ranked = scored
+    .filter(({ strongIntentMatch }) => !hasStrongTaggedMatch || strongIntentMatch)
     .sort((a, b) => b.score - a.score || a.index - b.index);
   const minimumScore = Math.max(8, (ranked[0]?.score ?? 0) * 0.35);
   /** @type {CorpusChunk[]} */
@@ -380,6 +396,7 @@ export function formatContext(chunks) {
     `Title: ${chunk.title}`,
     `Section: ${chunk.heading}`,
     `URL: ${chunk.url}`,
+    ...(chunk.intents?.length ? [`Answers: ${chunk.intents.join(", ")}`] : []),
     chunk.content
   ].join("\n")).join("\n\n");
 }

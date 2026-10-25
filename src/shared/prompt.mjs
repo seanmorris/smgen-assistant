@@ -1,6 +1,7 @@
 // @ts-check
 
 import { formatContext } from "./retrieval.mjs";
+import { questionIntentInstruction } from "./intent.mjs";
 
 /** @typedef {import('./types.mjs').CorpusChunk} CorpusChunk */
 
@@ -40,12 +41,13 @@ export function questionUsesPreviousContext(question) {
  * @param {string} [previousQuestion]
  */
 export function promptMessages(question, sources, previousQuestion = "") {
+  const intentInstruction = questionIntentInstruction(question);
   const messages = /** @type {Array<{role: "system" | "user" | "assistant", content: string}>} */ ([{
     role: "system",
     content: `${INSTRUCTIONS}\n\n${formatContext(sources)}`
   }]);
   if (previousQuestion) messages.push({ role: "user", content: `Earlier question for context: ${previousQuestion}` });
-  messages.push({ role: "user", content: `Question: ${question}\n\n${OUTPUT_INSTRUCTIONS}` });
+  messages.push({ role: "user", content: `Question: ${question}\n${intentInstruction ? `Answer form: ${intentInstruction}\n` : ""}\n${OUTPUT_INSTRUCTIONS}` });
   return messages;
 }
 
@@ -114,7 +116,7 @@ export async function fitPrompt(question, sources, previousQuestion, countTokens
   if (selected.length === 2 && selected[0] && selected[1]) {
     const first = selected[0];
     const second = await truncateSource(question, selected[1], countTokens, [first]);
-    if (second && second.content.length >= 80) {
+    if (second && second.content.length >= 48) {
       selected = [first, second];
       messages = promptMessages(question, selected);
       promptTokens = await countTokens(messages);

@@ -281,7 +281,14 @@ export async function buildCorpus(pagesDirectory, options) {
         if (/** @type {NodeJS.ErrnoException} */ (error).code !== "ENOENT") throw error;
       }
     }
-    const pageChunks = chunkMarkdown(parsed.markdown, title, options.chunkCharacters, renderedFragments);
+    /** @type {ReturnType<typeof chunkMarkdown>} */
+    let pageChunks;
+    try {
+      pageChunks = chunkMarkdown(parsed.markdown, title, options.chunkCharacters, renderedFragments);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`${relative}: ${message}`, { cause: error });
+    }
     pageChunks.forEach((chunk, index) => {
       chunks.push({
         id: `${sourceId}-${String(index + 1).padStart(3, "0")}`,
@@ -289,7 +296,9 @@ export async function buildCorpus(pagesDirectory, options) {
         title,
         url: sectionUrl(url, chunk.fragment),
         heading: chunk.heading,
-        content: chunk.content
+        content: chunk.content,
+        ...(chunk.intents?.length ? { intents: chunk.intents } : {}),
+        ...(chunk.keywords?.length ? { keywords: chunk.keywords } : {})
       });
     });
   }

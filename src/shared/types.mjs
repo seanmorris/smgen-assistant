@@ -15,6 +15,8 @@
  * @property {string} url
  * @property {string} heading
  * @property {string} content
+ * @property {string[]} [intents]
+ * @property {string[]} [keywords]
  */
 
 /**

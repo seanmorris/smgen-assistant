@@ -11,7 +11,7 @@ const chunks = [
 ];
 
 test("tokenizer preserves technical identifiers", () => {
-  assert.deepEqual(tokenize("PhpCgiNode php.request() foo-bar"), ["phpcginode", "php.request", "foo-bar"]);
+  assert.deepEqual(tokenize("PhpCgiNode php.request() foo-bar comments."), ["phpcginode", "php.request", "foo-bar", "comments"]);
 });
 
 test("retrieval boosts identifiers and the current page", () => {
@@ -297,4 +297,36 @@ test("a page menu opt-out is a focused retrieval", () => {
   ];
   const selected = retrieveChunks(pages, "How can one page opt out?", { maxChunks: 2, maxCharacters: 3000 });
   assert.deepEqual(selected.map(({ id }) => id), ["membership"]);
+});
+
+test("retrieval uses question form annotations to separate definitions and procedures", () => {
+  const pages = [
+    { id: "definition", sourceId: "widgets", title: "Widgets", heading: "Widgets", url: "/widgets.html", content: "A widget is a component that adds navigation.", intents: ["what"] },
+    { id: "procedure", sourceId: "widgets", title: "Widgets", heading: "Widgets", url: "/widgets.html", content: "Add a widget component to the navigation configuration.", intents: ["how"] }
+  ];
+  const options = { maxChunks: 2, maxCharacters: 1000 };
+  assert.deepEqual(retrieveChunks(pages, "What is a widget component?", options).map(({ id }) => id), ["definition"]);
+  assert.deepEqual(retrieveChunks(pages, "How do I add a widget component?", options).map(({ id }) => id), ["procedure"]);
+  assert.deepEqual(retrieveChunks(pages, "What is a widget component, and how do I add one?", options).map(({ id }) => id), ["definition", "procedure"]);
+});
+
+test("retrieval-only annotation keywords can match reader vocabulary", () => {
+  /** @type {import("../src/shared/types.mjs").CorpusChunk[]} */
+  const pages = [
+    { id: "setup", sourceId: "start", title: "Start", heading: "Create a Site", url: "/start.html", content: "Run the initializer.", intents: ["how"], keywords: ["bootstrap", "first setup"] },
+    { id: "other", sourceId: "other", title: "Other", heading: "Background", url: "/other.html", content: "General project background." }
+  ];
+  const [setup] = pages;
+  assert.ok(setup);
+  assert.equal(retrieveChunks(pages, "How do I bootstrap the project?", { maxChunks: 1, maxCharacters: 1000 })[0]?.id, "setup");
+  assert.doesNotMatch(formatContext([setup]), /bootstrap|first setup/u);
+  assert.match(formatContext([setup]), /Answers: how/u);
+});
+
+test("a weak intent overlap does not hide a stronger unannotated passage", () => {
+  const pages = [
+    { id: "tagged-widget", sourceId: "widgets", title: "Widgets", heading: "Add a Widget", url: "/widgets.html", content: "Add a widget.", intents: ["how"] },
+    { id: "rss", sourceId: "rss", title: "RSS Feeds", heading: "Add an RSS Feed", url: "/rss.html", content: "Define an RSS feed and select its articles." }
+  ];
+  assert.equal(retrieveChunks(pages, "How do I add an RSS feed?", { maxChunks: 1, maxCharacters: 1000 })[0]?.id, "rss");
 });

@@ -54,6 +54,16 @@ test("corpus rejects symlinks instead of following them", async () => {
   }
 });
 
+test("corpus reports the page containing an invalid intent annotation", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "smgen-assistant-intent-error-"));
+  try {
+    await writeFile(path.join(root, "broken.md"), "<!-- <how> -->\nText without a closing annotation.\n");
+    await assert.rejects(buildCorpus(root, { baseUrl: "", chunkCharacters: 4000 }), /broken\.md: Intent annotation <how> is not closed/u);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("heading chunking does not split a fenced code block", () => {
   const code = Array.from({ length: 30 }, (_, index) => `line ${index}`).join("\n");
   const chunks = chunkMarkdown(`# API\n\nBefore.\n\n## Example\n\n\`\`\`js\n${code}\n\`\`\`\n\nAfter.`, "API", 80);
@@ -81,6 +91,43 @@ test("heading fragments honor explicit IDs and remain unique", () => {
   const chunks = chunkMarkdown("# Same\n\nOne.\n\n# Same\n\nTwo.\n\n## Named {#chosen}\n\nThree.", "Page");
   assert.deepEqual(chunks.map((chunk) => chunk.fragment), ["same", "same-1", "chosen"]);
   assert.doesNotMatch(chunks[2]?.heading ?? "", /\{#chosen\}/u);
+});
+
+test("intent annotations split chunks and remain outside source text", () => {
+  const chunks = chunkMarkdown(`# Widgets
+
+<!-- <what keywords="component, gadget"> -->
+A widget is a configured page component.
+<!-- </what> -->
+
+<!-- <how keywords='install, first setup'> -->
+Run \`widget init\`, then edit \`widget.yaml\`.
+<!-- </how> -->`, "Widgets");
+  assert.equal(chunks.length, 2);
+  assert.deepEqual(chunks[0]?.intents, ["what"]);
+  assert.deepEqual(chunks[0]?.keywords, ["component", "gadget"]);
+  assert.deepEqual(chunks[1]?.intents, ["how"]);
+  assert.deepEqual(chunks[1]?.keywords, ["install", "first setup"]);
+  assert.doesNotMatch(JSON.stringify(chunks), /<!--|<what|<how/u);
+});
+
+test("intent annotations may nest and must close in order", () => {
+  const chunks = chunkMarkdown(`<!-- <what> -->
+Definition.
+<!-- <why> -->
+Reason.
+<!-- </why> -->
+More definition.
+<!-- </what> -->`, "Page");
+  assert.deepEqual(chunks.map(({ intents }) => intents), [["what"], ["what", "why"], ["what"]]);
+  assert.throws(() => chunkMarkdown("<!-- <how> -->\nText\n<!-- </what> -->", "Page"), /cannot close/u);
+  assert.throws(() => chunkMarkdown("<!-- <where> -->\nText", "Page"), /not closed/u);
+});
+
+test("intent-like comments in fenced code remain literal source", () => {
+  const [chunk] = chunkMarkdown("```md\n<!-- <how> -->\n```", "Page");
+  assert.equal(chunk?.intents, undefined);
+  assert.match(chunk?.content ?? "", /<!-- <how> -->/u);
 });
 
 test("rendered heading matching ignores headings in code fences", () => {

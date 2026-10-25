@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { fitPrompt, MAX_OUTPUT_TOKENS, MAX_PROMPT_TOKENS, promptMessages, questionUsesPreviousContext } from "../src/shared/prompt.mjs";
+import { questionIntents } from "../src/shared/intent.mjs";
 
 /** @type {import("../src/shared/types.mjs").CorpusChunk[]} */
 const sources = [
@@ -41,6 +42,16 @@ test("only referential questions receive prior-turn context", () => {
   assert.equal(questionUsesPreviousContext("How do I deploy to GitHub Pages?"), false);
 });
 
+test("question forms guide the requested kind of answer", () => {
+  assert.deepEqual(questionIntents("What does the builder create?"), ["what"]);
+  assert.deepEqual(questionIntents("Give me a definition of the builder."), ["what"]);
+  assert.deepEqual(questionIntents("What is the right way to build it?"), ["how"]);
+  assert.deepEqual(questionIntents("Where is it written and when does that happen?"), ["where", "when"]);
+  assert.deepEqual(questionIntents("Why does it run, and who runs it?"), ["why", "who"]);
+  assert.match(promptMessages("How do I build it?", sources).at(-1)?.content ?? "", /HOW: give the documented method or actions/iu);
+  assert.match(promptMessages("What does it build?", sources).at(-1)?.content ?? "", /WHAT: state the documented identity, behavior, or value/iu);
+});
+
 test("prompt fitting drops old context and low-ranked sources", async () => {
   const fitted = await fitPrompt("How do I build?", sources, "x".repeat(900), countCharacters);
   assert.ok(fitted);
@@ -55,7 +66,7 @@ test("prompt fitting trims a second relevant passage before dropping it", async 
   /** @type {import("../src/shared/types.mjs").CorpusChunk} */
   const primary = { id: "1", sourceId: "a", title: "Start", heading: "Create a Site", url: "/index.html#create-a-site", content: "Primary instructions. ".repeat(5) };
   /** @type {import("../src/shared/types.mjs").CorpusChunk} */
-  const secondary = { id: "2", sourceId: "b", title: "Config", heading: "Settings", url: "/configuration.html#settings", content: "Secondary configuration. ".repeat(100) };
+  const secondary = { id: "2", sourceId: "b", title: "Config", heading: "Settings", url: "/configuration.html#settings", content: "Secondary configuration. ".repeat(90) };
   const fitted = await fitPrompt("How do I configure both parts?", [primary, secondary], "", countCharacters);
   assert.ok(fitted);
   assert.equal(fitted?.sources.length, 2);

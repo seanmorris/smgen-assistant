@@ -57,6 +57,8 @@ IV. Preparing Content
       1. Use descriptive headings that match reader questions.
       2. Put procedures and their prerequisites in the same section when practical.
       3. Replace ambiguous labels with terms readers will search for.
+      4. Mark passages with optional question-form comments when one topic contains different answer types.
+      5. Use retrieval-only keywords for reader terms that should not enter the visible prose.
    C. Improve grounded answers
       1. Explain that source text constrains the answer.
       2. Explain linked citations to page fragments.

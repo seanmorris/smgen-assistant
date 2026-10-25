@@ -176,6 +176,24 @@ smgen-assistant build [options]
 
 The builder strips YAML frontmatter and splits Markdown at headings. It keeps fenced code blocks intact. Each chunk records a stable source ID, title, heading, and public URL.
 
+Optional comment annotations can separate passages that answer different forms
+of the same question:
+
+```markdown
+<!-- <what keywords="definition, purpose"> -->
+Definition text.
+<!-- </what> -->
+
+<!-- <how keywords="configure, setup"> -->
+Procedure text.
+<!-- </how> -->
+```
+
+The builder supports `what`, `why`, `where`, `when`, `how`, and `who`. It strips
+the comments from model context, stores the form on each chunk, and uses
+comma-separated `keywords` only for retrieval. A strongly relevant matching
+annotation limits retrieval to passages that share its form and topic.
+
 The browser ranks chunks with exact phrase, title, heading, technical identifier, body, term rarity, and current-page matches. It favors useful passages from more than one page, then keeps the summary and query-relevant paragraphs from long passages. Each retrieval receives at most `retrieval.maxChunks` chunks and `retrieval.maxCharacters` formatted characters. The default is two chunks so small models can distinguish the strongest passages.
 
 The prompt asks the model to rephrase only the selected passages in one to four short bullets and preserve commands and configuration values. It tells the model to favor the highest-ranked passages and avoid inferred steps. The browser matches each bullet to its supporting passage and adds a citation that links to the exact documented section. Referential follow-up questions receive the latest earlier question as context. The assistant never sends prior model answers back to the model.

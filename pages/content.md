@@ -90,6 +90,43 @@ Long sections can exceed `chunkCharacters`. The chunker keeps fenced code
 blocks intact and carries the section heading into each resulting chunk. Use
 smaller sections when one heading covers several unrelated tasks.
 
+## Mark Answer Forms
+
+<!-- <what keywords="question type, answer type, answer-form, definition, purpose, intent, tag, comment"> -->
+Optional comment annotations identify whether a passage answers `what`, `why`,
+`where`, `when`, `how`, or `who`. A relevant match limits retrieval to passages
+that share the question form and topic. A one-word overlap does not activate
+the limit. The prompt also tells the model which form to answer.
+
+The builder removes these comments from source text sent to the model. It
+stores the question form as chunk metadata. Unannotated Markdown keeps its
+current ranking behavior.
+<!-- </what> -->
+
+<!-- <how keywords="annotation, tag, comment, retrieval synonym"> -->
+Place an opening comment such as `<!-- <how> -->` before the passage and its
+closing `<!-- </how> -->` comment after the passage. Replace `how` with the
+question form that the passage answers.
+
+```markdown
+<!-- <what keywords="definition, purpose"> -->
+A widget is a named group of navigation links.
+<!-- </what> -->
+
+<!-- <how keywords="create, configure, setup"> -->
+Add the widget under `MENUS`, then place it in `MENU_REGIONS`.
+<!-- </how> -->
+```
+
+Separate `keywords` with commas. Keywords affect retrieval but do not become
+source facts. Use them for likely reader terms that would make the visible
+prose less precise.
+
+Annotations may nest, but they must close in reverse order. A build stops on
+an unmatched or unclosed annotation. Tags inside fenced code blocks remain
+literal examples.
+<!-- </how> -->
+
 ## Grounded Answers
 
 The prompt tells the model to use only selected passages, preserve commands and
