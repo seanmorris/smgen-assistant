@@ -1,6 +1,7 @@
 // @ts-check
 
 import { readFile } from "node:fs/promises";
+import { sourceMatches } from "./source-match.mjs";
 
 /** Return the median numeric value or zero for an empty list. */
 function median(values) {
@@ -26,8 +27,8 @@ async function main() {
   for (const model of models) {
     const records = evaluation.records.filter((record) => record.modelId === model);
     const answered = records.filter((record) => record.telemetry && !record.error);
-    const expectedHit = answered.filter((record) => record.expectedSources.some((url) => record.telemetry.fittedSources.some((source) => source.url === url))).length;
-    const allExpected = answered.filter((record) => record.expectedSources.every((url) => record.telemetry.fittedSources.some((source) => source.url === url))).length;
+    const expectedHit = answered.filter((record) => record.expectedSources.some((url) => record.telemetry.fittedSources.some((source) => sourceMatches(source.url, url)))).length;
+    const allExpected = answered.filter((record) => record.expectedSources.every((url) => record.telemetry.fittedSources.some((source) => sourceMatches(source.url, url)))).length;
     const accepted = answered.filter((record) => !record.telemetry.fallback).length;
     const warmGeneration = answered.filter((record) => record.telemetry.timing.reusedEngine).map((record) => record.telemetry.timing.generationMs);
     const decode = answered.map((record) => record.telemetry.usage?.extra?.decode_tokens_per_s).filter((value) => Number.isFinite(value));

@@ -192,7 +192,8 @@ Procedure text.
 The builder supports `what`, `why`, `where`, `when`, `how`, and `who`. It strips
 the comments from model context, stores the form on each chunk, and uses
 comma-separated `keywords` only for retrieval. A strongly relevant matching
-annotation limits retrieval to passages that share its form and topic.
+annotation excludes passages marked only for another question form.
+Unannotated topical passages remain eligible.
 
 The browser ranks chunks with exact phrase, title, heading, technical identifier, body, term rarity, and current-page matches. It favors useful passages from more than one page, then keeps the summary and query-relevant paragraphs from long passages. Each retrieval receives at most `retrieval.maxChunks` chunks and `retrieval.maxCharacters` formatted characters. The default is two chunks so small models can distinguish the strongest passages.
 

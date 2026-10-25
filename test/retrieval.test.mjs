@@ -275,11 +275,18 @@ test("compound questions retain passages for each requested task", () => {
 
 test("referential output questions reuse the previous user topic", () => {
   const pages = [
+    { id: "start", sourceId: "start", title: "Getting Started", heading: "Getting Started > Create a Site", url: "/index.html#create-a-site", content: "Create a site in an empty folder. Generated files are under docs/ unless OUTPUT_DIR changes." },
     { id: "paths", sourceId: "config", title: "Configuration", heading: "Configuration > Project Paths", url: "/configuration.html#project-paths", content: "OUTPUT_DIR is the generated site directory. Its default is ./docs." },
     { id: "ownership", sourceId: "config", title: "Configuration", heading: "Configuration > Output Ownership", url: "/configuration.html#output-ownership", content: "A successful build replaces OUTPUT_DIR completely." },
     { id: "metadata", sourceId: "writing", title: "Writing Pages", heading: "Writing Pages > Directory Metadata", url: "/writing-pages.html#directory-metadata", content: "A directory .fm.yaml file configures its navigation group." },
     { id: "license", sourceId: "license", title: "License", heading: "Redistribution", url: "/LICENSE.html#redistribution", content: "Redistribution may include generated files and directories." }
   ];
+  const location = retrieveChunks(pages, "Where does it put the finished files?", {
+    maxChunks: 2,
+    maxCharacters: 3000,
+    previousQuery: "How do I create a site in an empty folder?"
+  });
+  assert.deepEqual(new Set(location.map(({ id }) => id)), new Set(["start", "paths"]));
   const selected = retrieveChunks(pages, "Can I change that directory?", {
     maxChunks: 2,
     maxCharacters: 3000,
@@ -329,4 +336,80 @@ test("a weak intent overlap does not hide a stronger unannotated passage", () =>
     { id: "rss", sourceId: "rss", title: "RSS Feeds", heading: "Add an RSS Feed", url: "/rss.html", content: "Define an RSS feed and select its articles." }
   ];
   assert.equal(retrieveChunks(pages, "How do I add an RSS feed?", { maxChunks: 1, maxCharacters: 1000 })[0]?.id, "rss");
+});
+
+test("a strong generic intent match does not hide a topical unannotated passage", () => {
+  const pages = [
+    {
+      id: "setup",
+      sourceId: "start",
+      title: "Getting Started",
+      heading: "Create a Site",
+      url: "/index.html#create-a-site",
+      content: "Create a site, add a page, configure its title, build it, and serve the generated files.",
+      intents: ["how"],
+      keywords: ["first site", "setup"]
+    },
+    {
+      id: "timeline",
+      sourceId: "navigation",
+      title: "Navigation",
+      heading: "Timeline Menus",
+      url: "/navigation.html#timeline-menus",
+      content: "A timeline archive renders a calendar with expandable year and month groups. It selects a page date and conditionally loads archive.css."
+    }
+  ];
+  const selected = retrieveChunks(
+    pages,
+    "How do I make a Blogger-style archive with years, months, and a calendar?",
+    { maxChunks: 1, maxCharacters: 1000 }
+  );
+  assert.equal(selected[0]?.id, "timeline");
+});
+
+test("procedural annotations do not outrank specific template and plugin passages", () => {
+  const pages = [
+    {
+      id: "setup",
+      sourceId: "start",
+      title: "Getting Started",
+      heading: "Create a Site",
+      url: "/index.html#create-a-site",
+      content: "Create a site, replace its first page, configure the site, build it, and serve the generated files.",
+      intents: ["how"]
+    },
+    {
+      id: "template",
+      sourceId: "customization",
+      title: "Customization",
+      heading: "Customization > Write a Page Template",
+      url: "/customization.html#write-a-page-template",
+      content: "A custom page template combines PHP with Pandoc variables. Select it with template frontmatter."
+    },
+    {
+      id: "membership",
+      sourceId: "navigation",
+      title: "Navigation",
+      heading: "Navigation > Select Menus from Pages",
+      url: "/navigation.html#select-menus-from-pages",
+      content: "Pages use menus frontmatter to opt in or set a membership to false."
+    },
+    {
+      id: "plugins",
+      sourceId: "navigation",
+      title: "Navigation",
+      heading: "Navigation > Menu Plugins",
+      url: "/navigation.html#menu-plugins",
+      content: "Plugins select pages in bulk with include, exclude, and where rules."
+    }
+  ];
+  const options = { maxChunks: 2, maxCharacters: 2000 };
+  assert.deepEqual(
+    retrieveChunks(pages, "How do I give one page a different HTML layout?", options).map(({ id }) => id),
+    ["template"]
+  );
+  assert.deepEqual(
+    new Set(retrieveChunks(pages, "How can pages opt into a menu, and how can a plugin select pages in bulk with include, exclude, and where rules?", options).map(({ id }) => id)),
+    new Set(["membership", "plugins"])
+  );
 });

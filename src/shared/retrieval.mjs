@@ -23,6 +23,7 @@ const RELATED_TERMS = new Map([
 ]);
 const MAX_SOURCE_CHARACTERS = 1200;
 const STRONG_INTENT_RELEVANCE = 14;
+const INTENT_MATCH_BOOST = 12;
 
 /**
  * Normalize text for case-insensitive local matching.
@@ -150,6 +151,12 @@ function scoreChunk(chunk, query, terms, currentUrl, intents) {
   if (/\b(?:css|javascript|stylesheet|scripts?|static)\b/u.test(exact) && /\b(?:add|custom|load|own|publish|watch)\b/u.test(exact) && /add styles and scripts$/u.test(heading)) {
     score += 64;
   }
+  if (/\b(?:layout|template)\b/u.test(exact) && /\b(?:custom|different|one page|page|php)\b/u.test(exact) && /write a page template$/u.test(heading)) {
+    score += 80;
+  }
+  if (/\b(?:plugin|bulk|include|exclude|selector|where)\b/u.test(exact) && /menu plugins$/u.test(heading)) {
+    score += 80;
+  }
   if (/\b(?:archive|blogger|timeline)\b/u.test(exact) && /\b(?:calendar|date|month|year)\b/u.test(exact) && /timeline menus$/u.test(heading)) {
     score += 80;
   }
@@ -172,7 +179,7 @@ function scoreChunk(chunk, query, terms, currentUrl, intents) {
     score += 96;
   }
   if (/\b(?:finished|generated|output)\b.*\b(?:directory|files?|folder)\b/u.test(exact) && /project paths$/u.test(heading)) {
-    score += 88;
+    score += 128;
   }
   if (/\b(?:finished|generated|output)\b.*\b(?:directory|files?|folder)\b/u.test(exact) && /output ownership$/u.test(heading)) {
     score += 64;
@@ -180,9 +187,12 @@ function scoreChunk(chunk, query, terms, currentUrl, intents) {
   if (/\b(?:change|choose|set)\b.*\b(?:directory|folder)\b/u.test(exact) && /project paths$/u.test(heading)) {
     score += 96;
   }
+  if (/\b(?:change|choose|set)\b.*\b(?:directory|folder)\b/u.test(exact) && /output ownership$/u.test(heading)) {
+    score += 80;
+  }
   const matchesIntent = intents.some((intent) => chunk.intents?.includes(intent));
   const strongIntentMatch = matchesIntent && score >= STRONG_INTENT_RELEVANCE;
-  if (score > 0 && matchesIntent) score += 36;
+  if (score > 0 && matchesIntent) score += INTENT_MATCH_BOOST;
   if (score > 0 && currentUrl && comparablePath(chunk.url) === comparablePath(currentUrl)) {
     score += 28;
   }
@@ -293,6 +303,7 @@ function focusedQuery(query) {
   const asksForTimeline = /\b(?:archive|blogger|timeline)\b/u.test(value) && /\b(?:calendar|date|month|year)\b/u.test(value);
   const asksForAssets = /\b(?:css|javascript|stylesheet|scripts?|static)\b/u.test(value) && /\b(?:add|custom|load|own|publish|watch)\b/u.test(value);
   const asksForTemplate = /\b(?:layout|template)\b/u.test(value) && /\b(?:custom|different|page|php)\b/u.test(value);
+  const asksForMenuPlugins = /\b(?:plugin|bulk|include|exclude|selector|where)\b/u.test(value);
   const asksForPrecedence = /\b(?:override|beats?|wins?|precedence|order)\b/u.test(value) && /\b(?:config(?:uration)?|environment|shell|yaml)\b/u.test(value);
   const asksForLegacyNavigation = /\b(?:leftbarlink|leftbarshow|navigation_widgets|archive_title|legacy navigation)\b/u.test(value);
   return (/\bgithub pages\b/u.test(value) && !asksForPublicUrl)
@@ -302,7 +313,9 @@ function focusedQuery(query) {
     || asksForTemplate
     || asksForPrecedence
     || asksForLegacyNavigation
-    || (asksForMenuMembership && !/\b(?:add|another|create|custom|make|new).*(?:menu|navigation)\b/u.test(value))
+    || (asksForMenuMembership
+      && !asksForMenuPlugins
+      && !/\b(?:add|another|create|custom|make|new).*(?:menu|navigation)\b/u.test(value))
     || /\b(?:empty|new) (?:directory|folder)\b/u.test(value)
     || (/\b(?:where|which).*(?:put|store|write).*(?:content|page|pages|words)\b/u.test(value) && !asksForPageFrontmatter)
     || (/\b(?:add|another|create|custom|make|new).*(?:menu|navigation)\b/u.test(value) && !asksForMenuMembership)
@@ -355,7 +368,9 @@ export function retrieveChunks(chunks, query, options) {
     .filter((item) => item.score > 0);
   const hasStrongTaggedMatch = intents.length > 0 && scored.some(({ strongIntentMatch }) => strongIntentMatch);
   const ranked = scored
-    .filter(({ strongIntentMatch }) => !hasStrongTaggedMatch || strongIntentMatch)
+    .filter(({ chunk }) => !hasStrongTaggedMatch
+      || !chunk.intents?.length
+      || intents.some((intent) => chunk.intents?.includes(intent)))
     .sort((a, b) => b.score - a.score || a.index - b.index);
   const minimumScore = Math.max(8, (ranked[0]?.score ?? 0) * 0.35);
   /** @type {CorpusChunk[]} */
