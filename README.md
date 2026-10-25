@@ -16,11 +16,10 @@ The browser loads a 2,048-token context and reserves 384 tokens for each answer.
 
 ## Install
 
-Add the package to the site project:
+Install the package in the site project:
 
 ```sh
-npm install --save-dev \
-  https://github.com/seanmorris/smgen-assistant/releases/download/v0.1.21/smgen-assistant-0.1.21.tgz
+npm install --save-dev smgen-assistant
 ```
 
 Build the assistant after SMGen has generated the site:

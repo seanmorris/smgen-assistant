@@ -1,6 +1,6 @@
 {
   "name": "smgen-assistant",
-  "version": "0.1.21",
+  "version": "0.1.22",
   "description": "Build a private, in-browser AI assistant for an SMGen site.",
   "keywords": [
     "smgen",
@@ -10,7 +10,7 @@
   ],
   "license": "Apache-2.0",
   "author": "Sean Morris",
-  "homepage": "https://github.com/seanmorris/smgen-assistant#readme",
+  "homepage": "https://seanmorris.github.io/smgen-assistant/",
   "bugs": "https://github.com/seanmorris/smgen-assistant/issues",
   "repository": {
     "type": "git",
@@ -26,7 +26,6 @@
   "files": [
     "bin",
     "dist",
-    "eval",
     "README.md",
     "LICENSE",
     "THIRD_PARTY_NOTICES.md"
@@ -45,15 +44,18 @@
     "prepack": "npm run check"
   },
   "dependencies": {
-    "@mlc-ai/web-llm": "0.2.81",
     "yaml": "2.9.1"
   },
   "devDependencies": {
+    "@mlc-ai/web-llm": "0.2.81",
     "@types/node": "22.20.5",
     "esbuild": "0.28.2",
     "eslint": "10.13.0",
     "eslint-plugin-jsdoc": "65.4.2",
     "playwright-core": "1.59.1",
-    "typescript": "7.0.2"
+    "typescript": "6.0.3"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

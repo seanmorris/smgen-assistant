@@ -20,18 +20,17 @@ The authoring environment needs:
 
 - Node.js 20 or newer
 - an SMGen site with Markdown under `PAGES_DIR`
-- enough disk space for the installed WebLLM dependency and generated bundle
+- enough disk space for the package and generated browser bundle
 
 Visitors need a WebGPU browser. Each configured model can add feature, buffer,
 and memory requirements.
 
-## Install the Release
+## Install the Package
 
-Install version 0.1.21 from its GitHub release asset:
+Install smgen-assistant as a development dependency:
 
 ```bash
-npm install --save-dev \
-  https://github.com/seanmorris/smgen-assistant/releases/download/v0.1.21/smgen-assistant-0.1.21.tgz
+npm install --save-dev smgen-assistant
 ```
 
 Confirm that the local executable is available:

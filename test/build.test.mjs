@@ -6,9 +6,11 @@ import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises"
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+const projectRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 test("build replaces only the reserved assistant directory", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "smgen-assistant-build-"));
@@ -72,6 +74,47 @@ test("published bin runs the compiled ESM CLI", async () => {
     const result = await execFileAsync(process.execPath, [bin.pathname, "build", "--pages", pages, "--output", output]);
     assert.match(result.stdout, /Built 1 pages and 1 chunks/u);
     assert.equal(JSON.parse(await readFile(path.join(output, "__smgen-assistant", "corpus.json"), "utf8")).sources.length, 1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("packed package installs a buildable CLI without a second WebLLM tree", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "smgen-assistant-package-"));
+  const packages = path.join(root, "packages");
+  const consumer = path.join(root, "consumer");
+  const pages = path.join(consumer, "pages");
+  const output = path.join(consumer, "site");
+  try {
+    await mkdir(packages);
+    await mkdir(consumer);
+    await mkdir(pages);
+    await writeFile(path.join(consumer, "package.json"), "{\"private\":true}\n");
+    await writeFile(path.join(pages, "index.md"), "# Packed page\n\nPacked body.\n");
+    const packed = await execFileAsync("npm", [
+      "pack",
+      "--ignore-scripts",
+      "--silent",
+      "--pack-destination",
+      packages
+    ], { cwd: projectRoot });
+    const archiveName = packed.stdout.trim().split(/\r?\n/u).at(-1);
+    assert.ok(archiveName);
+    await execFileAsync("npm", [
+      "install",
+      "--ignore-scripts",
+      "--no-audit",
+      "--no-fund",
+      "--no-package-lock",
+      path.join(packages, archiveName)
+    ], { cwd: consumer });
+
+    const bin = path.join(consumer, "node_modules", ".bin", "smgen-assistant");
+    const result = await execFileAsync(bin, ["build", "--pages", pages, "--output", output]);
+    assert.match(result.stdout, /Built 1 pages and 1 chunks/u);
+    assert.equal(JSON.parse(await readFile(path.join(output, "__smgen-assistant", "corpus.json"), "utf8")).sources.length, 1);
+    await assert.rejects(stat(path.join(consumer, "node_modules", "@mlc-ai")), { code: "ENOENT" });
+    await assert.rejects(stat(path.join(consumer, "node_modules", "smgen-assistant", "eval")), { code: "ENOENT" });
   } finally {
     await rm(root, { recursive: true, force: true });
   }

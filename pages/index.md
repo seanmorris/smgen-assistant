@@ -26,11 +26,10 @@ static assets.
 The build requires Node.js 20 or newer and an existing SMGen site. Visitors
 need a browser with WebGPU and enough memory for at least one configured model.
 
-Install the current release in the site project:
+Install the package in the site project:
 
 ```bash
-npm install --save-dev \
-  https://github.com/seanmorris/smgen-assistant/releases/download/v0.1.21/smgen-assistant-0.1.21.tgz
+npm install --save-dev smgen-assistant
 ```
 
 ## Add the Assistant
