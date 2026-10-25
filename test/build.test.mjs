@@ -97,7 +97,10 @@ test("packed package installs a buildable CLI without a second WebLLM tree", asy
       "--silent",
       "--pack-destination",
       packages
-    ], { cwd: projectRoot });
+    ], {
+      cwd: projectRoot,
+      env: { ...process.env, npm_config_dry_run: "false" }
+    });
     const archiveName = packed.stdout.trim().split(/\r?\n/u).at(-1);
     assert.ok(archiveName);
     await execFileAsync("npm", [
@@ -107,7 +110,10 @@ test("packed package installs a buildable CLI without a second WebLLM tree", asy
       "--no-fund",
       "--no-package-lock",
       path.join(packages, archiveName)
-    ], { cwd: consumer });
+    ], {
+      cwd: consumer,
+      env: { ...process.env, npm_config_dry_run: "false" }
+    });
 
     const bin = path.join(consumer, "node_modules", ".bin", "smgen-assistant");
     const result = await execFileAsync(bin, ["build", "--pages", pages, "--output", output]);
