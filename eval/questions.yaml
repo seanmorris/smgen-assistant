@@ -11,7 +11,6 @@ roles:
         goal: Explain what SMGen does and what the published site needs.
         expectedSources:
           - /index.html#smgen
-          - /deployment.html#static-hosting
         requiredFacts:
           - SMGen turns Markdown into static HTML.
           - The deployed site does not need PHP or an application server.
@@ -47,7 +46,7 @@ roles:
           - The source directory structure is preserved and the extension becomes `.html`.
           - A page can begin with YAML frontmatter enclosed by `---` lines.
         variants:
-          - Where do I put a new page, and what URL will it get?
+          - Where do I put a new Markdown page with a title, and what URL will it get?
           - How do I add a Markdown page with a title to an SMGen site?
           - If I create `pages/guides/install.md`, where does SMGen publish it?
 
@@ -61,7 +60,7 @@ roles:
           - RSS uses `date`, then `created`.
           - RSS does not infer a timestamp and fails when a selected page has no date.
         variants:
-          - How do I publish one article to both my main and releases RSS feeds?
+          - Which frontmatter puts one article in both my main and releases RSS feeds, which date does RSS use, and what happens without one?
           - Which frontmatter makes a page appear in an RSS feed, and which date does it use?
           - I selected a page for a feed but it has no date. What will SMGen do?
 
@@ -105,7 +104,7 @@ roles:
           - It uses `date`, then `created`, then documented filesystem or Git fallbacks.
           - It adds no timeline JavaScript and links `archive.css` only for a populated rendered timeline.
         variants:
-          - How do I make a Blogger-style archive with years, months, and a calendar?
+          - How do I make a Blogger-style archive with years, months, and a calendar, and which dates and browser assets does it use?
           - What date does a timeline menu use when a page has no `date` field?
           - Does enabling a timeline add JavaScript or CSS to every page?
 
@@ -117,13 +116,12 @@ roles:
         goal: Explain how authored CSS and JavaScript are copied and linked.
         expectedSources:
           - /customization.html#add-styles-and-scripts
-          - /configuration.html#styles-and-scripts
         requiredFacts:
           - Put authored browser assets under `static/`.
           - Add their URLs to the appropriate style or script setting.
           - "`smgen watch` rebuilds after a static file changes."
         variants:
-          - What is the right way to add my own CSS and JavaScript?
+          - What is the right way to add my own CSS and JavaScript, and will the watch command publish changes?
           - I put `theme.css` under `static/`, but the page does not load it. What else is required?
           - Does the watch command publish changes to files in the static directory?
 
@@ -161,13 +159,12 @@ roles:
         goal: Explain why and how to set the production base URL.
         expectedSources:
           - /deployment.html#set-the-public-url
-          - /configuration.html#site-and-page-settings
         requiredFacts:
           - Set `BASE_URL` to the site's public root before a production build.
           - SMGen applies it to generated asset, navigation, search, and sitemap URLs.
           - A trailing slash is optional.
         variants:
-          - My site will live under a subdirectory. How do I keep generated links working?
+          - My site will live under a subdirectory. What should `BASE_URL` be, which links use it, and is a trailing slash required?
           - What should `BASE_URL` contain for a production build?
           - Do I include a trailing slash when I set the public URL?
 
@@ -192,13 +189,12 @@ roles:
         goal: Explain how old sidebar settings coexist with named menus.
         expectedSources:
           - /navigation.html#legacy-navigation
-          - /navigation.html#select-menus-from-pages
         requiredFacts:
           - Pages without `menus` keep the legacy `leftBarLink`, `date`, and `archive` behavior.
           - Pages with `menus` use explicit named-menu membership instead of legacy inference.
           - Existing `renderNavBar()` helpers can remain while a site migrates incrementally.
         variants:
-          - Will `leftBarLink` still work if I start adding named menus?
+          - Will `leftBarLink` and `renderNavBar()` still work while I migrate pages gradually to named `menus`?
           - How can I migrate an older sidebar setup without changing every page at once?
           - What happens to legacy navigation inference when a page gets a `menus` field?
 

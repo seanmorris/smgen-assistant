@@ -314,9 +314,6 @@ export function formatGeneratedAnswer(answer, sources, _finishReason) {
   }
   if (!matched.length) return { ok: false, reason: "unsupported-content" };
   const used = [...new Set(matched.map((item) => item.source))];
-  if (sources.length > 1 && used.length < sources.length) {
-    return { ok: false, reason: "incomplete-sources" };
-  }
   const selected = used.map((index) => sources[index]).filter((source) => source !== undefined);
   const markdown = matched.map((item) => `- ${item.content} [Source ${used.indexOf(item.source) + 1}]`).join("\n");
   return { ok: true, answer: markdown, sources: selected, filtered: matched.length < rawBlocks.length };

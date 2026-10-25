@@ -139,6 +139,18 @@ function scoreChunk(chunk, query, terms, currentUrl) {
   if (/\b(?:css|javascript|stylesheet|scripts?|static)\b/u.test(exact) && /\b(?:add|custom|load|own|publish|watch)\b/u.test(exact) && /add styles and scripts$/u.test(heading)) {
     score += 64;
   }
+  if (/\b(?:archive|blogger|timeline)\b/u.test(exact) && /\b(?:calendar|date|month|year)\b/u.test(exact) && /timeline menus$/u.test(heading)) {
+    score += 80;
+  }
+  if (/\b(?:rss|feeds?)\b/u.test(exact) && /\b(?:article|frontmatter|membership|page|publish|releases?)\b/u.test(exact) && /select pages$/u.test(heading)) {
+    score += 96;
+  }
+  if (/\b(?:rss|feeds?)\b/u.test(exact) && /\b(?:created|date|timestamp|without)\b/u.test(exact) && /dates and item data$/u.test(heading)) {
+    score += 96;
+  }
+  if (/\b(?:frontmatter|metadata|title|yaml)\b/u.test(exact) && /page frontmatter$/u.test(heading)) {
+    score += 64;
+  }
   if (/(?:\bbase_url\b|\bsubdirectory\b.*\b(?:build|deploy|github pages|links?|public)\b)/u.test(exact) && /set the public url$/u.test(heading)) {
     score += 72;
   }
@@ -146,7 +158,7 @@ function scoreChunk(chunk, query, terms, currentUrl) {
     score += 64;
   }
   if (/\b(?:leftbarlink|leftbarshow|navigation_widgets|archive_title)\b/u.test(exact) && /legacy navigation$/u.test(heading)) {
-    score += 72;
+    score += 96;
   }
   if (score > 0 && currentUrl && comparablePath(chunk.url) === comparablePath(currentUrl)) {
     score += 28;
@@ -239,9 +251,21 @@ function focusedQuery(query) {
   const value = normalized(query);
   const asksForMenuMembership = /(?:\b(?:choose|select)\b.*\bpages?\b|\bpages?\b.*\b(?:belong|membership|opt (?:in|out))\b)/u.test(value);
   const asksForPublicUrl = /\b(?:base_url|public url|subdirectory)\b/u.test(value);
+  const asksForPageFrontmatter = /\b(?:frontmatter|metadata|title|yaml)\b/u.test(value);
+  const asksForTimeline = /\b(?:archive|blogger|timeline)\b/u.test(value) && /\b(?:calendar|date|month|year)\b/u.test(value);
+  const asksForAssets = /\b(?:css|javascript|stylesheet|scripts?|static)\b/u.test(value) && /\b(?:add|custom|load|own|publish|watch)\b/u.test(value);
+  const asksForTemplate = /\b(?:layout|template)\b/u.test(value) && /\b(?:custom|different|page|php)\b/u.test(value);
+  const asksForPrecedence = /\b(?:override|beats?|wins?|precedence|order)\b/u.test(value) && /\b(?:config(?:uration)?|environment|shell|yaml)\b/u.test(value);
+  const asksForLegacyNavigation = /\b(?:leftbarlink|leftbarshow|navigation_widgets|archive_title|legacy navigation)\b/u.test(value);
   return (/\bgithub pages\b/u.test(value) && !asksForPublicUrl)
+    || (asksForPublicUrl && !/\bgithub pages\b/u.test(value))
+    || asksForTimeline
+    || asksForAssets
+    || asksForTemplate
+    || asksForPrecedence
+    || asksForLegacyNavigation
     || /\b(?:empty|new) (?:directory|folder)\b/u.test(value)
-    || /\b(?:where|which).*(?:put|store|write).*(?:content|page|pages|words)\b/u.test(value)
+    || (/\b(?:where|which).*(?:put|store|write).*(?:content|page|pages|words)\b/u.test(value) && !asksForPageFrontmatter)
     || (/\b(?:add|another|create|custom|make|new).*(?:menu|navigation)\b/u.test(value) && !asksForMenuMembership)
     || /\bwhat (?:does|is) (?:smgen|this)\b/u.test(value);
 }
@@ -288,10 +312,11 @@ export function retrieveChunks(chunks, query, options) {
     .map((chunk, index) => ({ chunk, index, score: scoreChunk(chunk, query, terms, options.currentUrl ?? "") }))
     .filter((item) => item.score > 0)
     .sort((a, b) => b.score - a.score || a.index - b.index);
+  const minimumScore = Math.max(8, (ranked[0]?.score ?? 0) * 0.35);
   /** @type {CorpusChunk[]} */
   const selected = [];
   const maxChunks = focusedQuery(query) ? 1 : options.maxChunks;
-  const remaining = [...ranked];
+  const remaining = ranked.filter(({ score }) => score >= minimumScore);
   const sources = new Set();
   while (selected.length < maxChunks && remaining.length) {
     let index = 0;

@@ -119,13 +119,15 @@ test("generated prose drops unsupported claims while keeping grounded bullets", 
   });
 });
 
-test("generated prose rejects an answer that ignores a supplied passage", () => {
+test("generated prose ignores a supplied passage that does not help the answer", () => {
   const primary = sources[0];
   assert.ok(primary);
   const other = { ...primary, id: "2", sourceId: "menus", content: "Use `menus` in page frontmatter." };
   assert.deepEqual(formatGeneratedAnswer("- Initialize the site with `smgen init`.", [primary, other], "stop"), {
-    ok: false,
-    reason: "incomplete-sources"
+    ok: true,
+    answer: "- Initialize the site with `smgen init`. [Source 1]",
+    sources: [primary],
+    filtered: false
   });
 });
 

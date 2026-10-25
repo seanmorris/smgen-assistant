@@ -12,7 +12,7 @@ export const MAX_QUESTION_CHARACTERS = 2000;
 const INSTRUCTIONS = `Use only the numbered documentation sources below.
 Never add a fact from memory. Copy commands, filenames, configuration keys, and literal values exactly from the cited source.
 Prefer earlier sources. Use a later source only when it adds a fact that directly answers the question.
-Cover every part of the question before adding supporting detail. When more than one source is supplied, include at least one fact from each source.
+Cover every part of the question before adding supporting detail. Ignore a supplied source when it does not help answer the question.
 Select only the most useful facts. Do not enumerate settings or examples unless the question asks for them. Do not write a complete guide or exhaust the sources.`;
 
 const OUTPUT_INSTRUCTIONS = `Answer the question directly with one to four short Markdown bullets and no more than 90 words total.

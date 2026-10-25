@@ -25,7 +25,7 @@ test("prompt instructions require faithful cited paraphrases", () => {
   assert.match(messages[0]?.content ?? "", /Copy commands, filenames, configuration keys/iu);
   assert.match(messages[0]?.content ?? "", /Prefer earlier sources/iu);
   assert.match(messages[0]?.content ?? "", /Cover every part of the question/iu);
-  assert.match(messages[0]?.content ?? "", /one fact from each source/iu);
+  assert.match(messages[0]?.content ?? "", /ignore a supplied source when it does not help/iu);
   assert.match(messages.at(-1)?.content ?? "", /Answer the question directly with one to four short Markdown bullets/iu);
   assert.match(messages.at(-1)?.content ?? "", /no more than 90 words total/iu);
   assert.match(messages.at(-1)?.content ?? "", /one bullet for each requested action or decision/iu);

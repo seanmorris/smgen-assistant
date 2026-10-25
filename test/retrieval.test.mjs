@@ -63,7 +63,7 @@ test("retrieval does not return an unrelated current page", () => {
   assert.deepEqual(selected, []);
 });
 
-test("retrieval favors build instructions and varied source pages", () => {
+test("retrieval keeps related setup passages ahead of deployment", () => {
   const pages = [
     { id: "start", sourceId: "start", title: "Getting Started", heading: "Create a Site", url: "/index.html#create-a-site", content: "Build a site by running ./smgen.sh build after writing Markdown pages." },
     { id: "deploy", sourceId: "deploy", title: "Deployment", heading: "GitHub Pages", url: "/deployment.html#github-pages", content: "Build and publish the generated site with GitHub Actions." },
@@ -75,7 +75,7 @@ test("retrieval favors build instructions and varied source pages", () => {
     currentUrl: "/index.html"
   });
   assert.equal(selected[0]?.id, "start");
-  assert.equal(new Set(selected.map((chunk) => chunk.sourceId)).size, 2);
+  assert.deepEqual(selected.map(({ id }) => id), ["start", "more"]);
 });
 
 test("retrieval maps website language and root URLs to create-site guidance", () => {
@@ -173,6 +173,37 @@ test("retrieval routes varied project-maintenance language", () => {
   assert.equal(first("What should BASE_URL contain for a production build?"), "public");
   assert.equal(first("Where should I put a local override that beats the project YAML?"), "precedence");
   assert.equal(first("Will leftBarLink still work if I start adding named menus?"), "legacy");
+});
+
+test("focused maintenance questions omit lexical distractors", () => {
+  const pages = [
+    { id: "timeline", sourceId: "navigation", title: "Navigation", heading: "Navigation > Timeline Menus", url: "/navigation.html#timeline-menus", content: "A timeline renders a calendar with year and month groups and conditionally loads archive.css." },
+    { id: "start", sourceId: "start", title: "Getting Started", heading: "Create a Site", url: "/index.html#create-a-site", content: "Create a site with a first page." },
+    { id: "assets", sourceId: "custom", title: "Customization", heading: "Customization > Add Styles and Scripts", url: "/customization.html#add-styles-and-scripts", content: "Add CSS and JavaScript from static/. The watch command rebuilds changed assets." },
+    { id: "license", sourceId: "license", title: "License", heading: "Definitions", url: "/LICENSE.html#definitions", content: "The right to use the work is subject to this license." },
+    { id: "public", sourceId: "deploy", title: "Deployment", heading: "Deployment > Set the Public URL", url: "/deployment.html#set-the-public-url", content: "Set BASE_URL for generated links when a site uses a subdirectory." },
+    { id: "links", sourceId: "navigation", title: "Navigation", heading: "Navigation > Add Explicit Links", url: "/navigation.html#add-explicit-links", content: "Add explicit navigation links to a menu." },
+    { id: "precedence", sourceId: "config", title: "Configuration", heading: "Configuration > Precedence", url: "/configuration.html#precedence", content: "Calling-process shell values win over .smgen.yaml." },
+    { id: "faq", sourceId: "faq", title: "FAQ", heading: "Why did a build edit my page source?", url: "/faq.html#edit", content: "A build may write a derived creation date." }
+  ];
+  const options = { maxChunks: 2, maxCharacters: 3000 };
+  assert.deepEqual(retrieveChunks(pages, "How do I make a Blogger-style archive with years, months, and a calendar?", options).map(({ id }) => id), ["timeline"]);
+  assert.deepEqual(retrieveChunks(pages, "What is the right way to add my own CSS and JavaScript?", options).map(({ id }) => id), ["assets"]);
+  assert.deepEqual(retrieveChunks(pages, "My site is under a subdirectory. How do I keep generated links working?", options).map(({ id }) => id), ["public"]);
+  assert.deepEqual(retrieveChunks(pages, "My shell value and .smgen.yaml disagree. Which one wins?", options).map(({ id }) => id), ["precedence"]);
+});
+
+test("compound page and feed questions retain each directly requested section", () => {
+  const pages = [
+    { id: "writing", sourceId: "writing", title: "Writing Pages", heading: "Writing Pages", url: "/writing-pages.html#writing-pages", content: "Put Markdown under pages/. The source path becomes an HTML URL." },
+    { id: "frontmatter", sourceId: "writing", title: "Writing Pages", heading: "Writing Pages > Page Frontmatter", url: "/writing-pages.html#page-frontmatter", content: "A page title belongs in YAML frontmatter." },
+    { id: "define-feeds", sourceId: "rss", title: "RSS", heading: "RSS > Define Feeds", url: "/rss.html#define-feeds", content: "Define main and releases feeds." },
+    { id: "select-pages", sourceId: "rss", title: "RSS", heading: "RSS > Select Pages", url: "/rss.html#select-pages", content: "Use feeds in page frontmatter to publish an article to named feeds." },
+    { id: "dates", sourceId: "rss", title: "RSS", heading: "RSS > Dates and Item Data", url: "/rss.html#dates-and-item-data", content: "RSS uses date then created and rejects a selected page without either." }
+  ];
+  const options = { maxChunks: 2, maxCharacters: 3000 };
+  assert.deepEqual(retrieveChunks(pages, "Where do I put a new Markdown page with a title, and what URL will it get?", options).map(({ id }) => id), ["writing", "frontmatter"]);
+  assert.deepEqual(new Set(retrieveChunks(pages, "Which frontmatter puts one article in both RSS feeds, which date does RSS use, and what happens without one?", options).map(({ id }) => id)), new Set(["select-pages", "dates"]));
 });
 
 test("compound questions retain passages for each requested task", () => {
