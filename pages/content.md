@@ -94,10 +94,9 @@ smaller sections when one heading covers several unrelated tasks.
 
 <!-- <what keywords="question type, answer type, answer-form, definition, purpose, intent, tag, comment"> -->
 Optional comment annotations identify whether a passage answers `what`, `why`,
-`where`, `when`, `how`, or `who`. A relevant match excludes passages marked
-only for another question form. Unannotated topical passages remain eligible.
-A one-word overlap does not activate the filter. The prompt also tells the
-model which form to answer.
+`where`, `when`, `how`, or `who`. A matching form receives a modest ranking
+boost. It never excludes a topical passage marked for another form. The prompt
+also tells the model which form to answer.
 
 The builder removes these comments from source text sent to the model. It
 stores the question form as chunk metadata. Unannotated Markdown keeps its

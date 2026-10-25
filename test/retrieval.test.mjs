@@ -312,8 +312,8 @@ test("retrieval uses question form annotations to separate definitions and proce
     { id: "procedure", sourceId: "widgets", title: "Widgets", heading: "Widgets", url: "/widgets.html", content: "Add a widget component to the navigation configuration.", intents: ["how"] }
   ];
   const options = { maxChunks: 2, maxCharacters: 1000 };
-  assert.deepEqual(retrieveChunks(pages, "What is a widget component?", options).map(({ id }) => id), ["definition"]);
-  assert.deepEqual(retrieveChunks(pages, "How do I add a widget component?", options).map(({ id }) => id), ["procedure"]);
+  assert.equal(retrieveChunks(pages, "What is a widget component?", options)[0]?.id, "definition");
+  assert.equal(retrieveChunks(pages, "How do I add a widget component?", options)[0]?.id, "procedure");
   assert.deepEqual(retrieveChunks(pages, "What is a widget component, and how do I add one?", options).map(({ id }) => id), ["definition", "procedure"]);
 });
 
@@ -365,6 +365,34 @@ test("a strong generic intent match does not hide a topical unannotated passage"
     { maxChunks: 1, maxCharacters: 1000 }
   );
   assert.equal(selected[0]?.id, "timeline");
+});
+
+test("a matching answer form does not hide a topical passage marked for another form", () => {
+  const pages = [
+    {
+      id: "frontmatter",
+      sourceId: "writing",
+      title: "Writing Pages",
+      heading: "Page Frontmatter",
+      url: "/writing.html#frontmatter",
+      content: "YAML configures a page title.",
+      intents: ["what"]
+    },
+    {
+      id: "menus",
+      sourceId: "navigation",
+      title: "Navigation",
+      heading: "Define Menus and Regions",
+      url: "/navigation.html#define-menus",
+      content: "Change MENUS in YAML to define a sidebar menu.",
+      intents: ["how"]
+    }
+  ];
+  const selected = retrieveChunks(pages, "What YAML do I change to define a sidebar menu?", {
+    maxChunks: 2,
+    maxCharacters: 1000
+  });
+  assert.ok(selected.some(({ id }) => id === "menus"));
 });
 
 test("procedural annotations do not outrank specific template and plugin passages", () => {

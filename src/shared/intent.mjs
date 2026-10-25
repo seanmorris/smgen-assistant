@@ -1,7 +1,7 @@
 // @ts-check
 
 const INTENT_ORDER = ["what", "why", "where", "when", "how", "who"];
-const HOW_REPHRASE = /\bwhat(?:'s| is)\s+(?:the\s+)?(?:(?:right|best|recommended)\s+)?way\b|\bwhat should (?:i|we|you)\s+(?:do|run|set|use|write)\b/iu;
+const HOW_REPHRASE = /\bwhat(?:'s| is)\s+(?:the\s+)?(?:(?:right|best|recommended)\s+)?way\b|\bwhat should (?:i|we|you)\s+(?:do|run|set|use|write)\b|\bwhat\s+(?:commands?|files?|steps?|settings?)\b[^?]*\b(?:do|does|should|need|required)\b/iu;
 
 /**
  * Identify the answer forms explicitly requested by a reader's question.

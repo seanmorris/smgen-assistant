@@ -22,7 +22,6 @@ const RELATED_TERMS = new Map([
   ["setup", ["install", "configure"]]
 ]);
 const MAX_SOURCE_CHARACTERS = 1200;
-const STRONG_INTENT_RELEVANCE = 14;
 const INTENT_MATCH_BOOST = 12;
 
 /**
@@ -103,7 +102,7 @@ function occurrences(haystack, needle) {
  * @param {Array<{value: string, weight: number}>} terms
  * @param {string} currentUrl
  * @param {string[]} intents
- * @returns {{score: number, strongIntentMatch: boolean}}
+ * @returns {{score: number}}
  */
 function scoreChunk(chunk, query, terms, currentUrl, intents) {
   const title = normalized(chunk.title);
@@ -191,12 +190,11 @@ function scoreChunk(chunk, query, terms, currentUrl, intents) {
     score += 80;
   }
   const matchesIntent = intents.some((intent) => chunk.intents?.includes(intent));
-  const strongIntentMatch = matchesIntent && score >= STRONG_INTENT_RELEVANCE;
   if (score > 0 && matchesIntent) score += INTENT_MATCH_BOOST;
   if (score > 0 && currentUrl && comparablePath(chunk.url) === comparablePath(currentUrl)) {
     score += 28;
   }
-  return { score, strongIntentMatch };
+  return { score };
 }
 
 /**
@@ -366,11 +364,7 @@ export function retrieveChunks(chunks, query, options) {
   const scored = chunks
     .map((chunk, index) => ({ chunk, index, ...scoreChunk(chunk, searchQuery, terms, options.currentUrl ?? "", intents) }))
     .filter((item) => item.score > 0);
-  const hasStrongTaggedMatch = intents.length > 0 && scored.some(({ strongIntentMatch }) => strongIntentMatch);
   const ranked = scored
-    .filter(({ chunk }) => !hasStrongTaggedMatch
-      || !chunk.intents?.length
-      || intents.some((intent) => chunk.intents?.includes(intent)))
     .sort((a, b) => b.score - a.score || a.index - b.index);
   const minimumScore = Math.max(8, (ranked[0]?.score ?? 0) * 0.35);
   /** @type {CorpusChunk[]} */

@@ -59,7 +59,7 @@ IV. Preparing Content
       3. Replace ambiguous labels with terms readers will search for.
       4. Mark passages with optional question-form comments when one topic contains different answer types.
       5. Use retrieval-only keywords for reader terms that should not enter the visible prose.
-      6. Exclude passages marked for a conflicting question form while keeping unannotated topical passages eligible.
+      6. Use question forms as a modest ranking signal without excluding topical passages.
    C. Improve grounded answers
       1. Explain that source text constrains the answer.
       2. Explain linked citations to page fragments.

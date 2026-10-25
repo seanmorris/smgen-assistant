@@ -46,6 +46,7 @@ test("question forms guide the requested kind of answer", () => {
   assert.deepEqual(questionIntents("What does the builder create?"), ["what"]);
   assert.deepEqual(questionIntents("Give me a definition of the builder."), ["what"]);
   assert.deepEqual(questionIntents("What is the right way to build it?"), ["how"]);
+  assert.deepEqual(questionIntents("What commands and files do I need to build it?"), ["how"]);
   assert.deepEqual(questionIntents("Where is it written and when does that happen?"), ["where", "when"]);
   assert.deepEqual(questionIntents("Why does it run, and who runs it?"), ["why", "who"]);
   assert.match(promptMessages("How do I build it?", sources).at(-1)?.content ?? "", /HOW: give the documented method or actions/iu);

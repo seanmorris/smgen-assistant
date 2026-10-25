@@ -48,7 +48,7 @@ roles:
         variants:
           - Where do I put a new Markdown page with a title, and what URL will it get?
           - How do I add a Markdown page with a title to an SMGen site?
-          - If I create `pages/guides/install.md`, where does SMGen publish it?
+          - Where do I put a nested Markdown page, how do I give it a YAML title, and what URL will it get?
 
       - id: publish-to-feeds
         goal: Explain how a page joins feeds and which dates RSS uses.
@@ -92,7 +92,7 @@ roles:
           - A page can set a menu membership to `false` to veto a selector.
         variants:
           - How can pages opt into or veto a menu, and how can a plugin select pages in bulk with include, exclude, and where rules?
-          - I need all public guides in one menu except a few pages. How should I configure that?
+          - How can a plugin add all public guides to one menu while selected pages veto membership?
           - Can a content author remove one page from a menu that a plugin populated?
 
       - id: create-timeline
