@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 112" class="smgen-assistant-launcher-icon" aria-hidden="true" focusable="false">
+  <metadata>
+    <rdf:RDF
+      xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+      xmlns:dc="http://purl.org/dc/elements/1.1/"
+      xmlns:cc="http://creativecommons.org/ns#">
+      <cc:Work rdf:about="">
+        <dc:title>Lotus flower animation</dc:title>
+        <dc:creator>
+          <cc:Agent>
+            <dc:title>Denis Giffeler (Wikimedia Commons user Giffeler)</dc:title>
+          </cc:Agent>
+        </dc:creator>
+        <dc:date>2020-05-07</dc:date>
+        <dc:source rdf:resource="https://commons.wikimedia.org/wiki/File:Lotus_flower_animation.svg"/>
+        <dc:rights>Creative Commons Attribution 4.0 International (CC BY 4.0)</dc:rights>
+        <dc:description>Modified for smgen-assistant: autonomous SMIL timing was removed, the artwork was made monochrome, and host CSS now controls its state animation.</dc:description>
+        <cc:attributionName>Denis Giffeler (Giffeler)</cc:attributionName>
+        <cc:attributionURL rdf:resource="https://commons.wikimedia.org/wiki/User:Giffeler"/>
+        <cc:license rdf:resource="https://creativecommons.org/licenses/by/4.0/"/>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <title>Lotus flower</title>
+  <g fill="var(--smgen-lotus-fill, white)" stroke="currentColor" stroke-width="6" stroke-linejoin="round">
+    <path class="smgen-lotus-petal smgen-lotus-petal-outer-left" d="M 72 104 A 50 50 0 0 1 72 24 A 50 50 0 0 1 72 104 Z"/>
+    <path class="smgen-lotus-petal smgen-lotus-petal-outer-right" d="M 72 104 A 50 50 0 0 1 72 24 A 50 50 0 0 1 72 104 Z"/>
+    <path class="smgen-lotus-petal smgen-lotus-petal-inner-left" d="M 72 104 A 55 55 0 0 1 72 14 A 55 55 0 0 1 72 104 Z"/>
+    <path class="smgen-lotus-petal smgen-lotus-petal-inner-right" d="M 72 104 A 55 55 0 0 1 72 14 A 55 55 0 0 1 72 104 Z"/>
+    <path d="M 72 104 A 60 60 0 0 1 72 4 A 60 60 0 0 1 72 104 Z"/>
+  </g>
+</svg>

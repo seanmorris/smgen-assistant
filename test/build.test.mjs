@@ -35,6 +35,7 @@ test("build replaces only the reserved assistant directory", async () => {
     assert.equal(await readFile(path.join(second.destination, "corpus.json"), "utf8"), firstCorpus);
     assert.equal(JSON.parse(firstCorpus).sources[0].url, "/docs/index.html");
     assert.match(await readFile(path.join(second.destination, "loader.js"), "utf8"), /frame\.html/u);
+    assert.match(await readFile(path.join(second.destination, "lotus.svg"), "utf8"), /Creative Commons Attribution 4\.0/u);
     assert.equal((await stat(second.destination)).mode & 0o777, 0o755);
   } finally {
     await rm(root, { recursive: true, force: true });

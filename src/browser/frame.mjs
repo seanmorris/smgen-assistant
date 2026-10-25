@@ -270,6 +270,15 @@ function setWorking(working) {
 }
 
 /**
+ * Tell the host launcher whether the assistant is processing a question.
+ *
+ * @param {boolean} active
+ */
+function reportActivity(active) {
+  window.parent.postMessage({ type: "smgen-assistant:activity", active }, location.origin);
+}
+
+/**
  * Describe the selected model without claiming estimates the site did not set.
  *
  * @param {AssistantModel} model
@@ -512,6 +521,7 @@ async function askQuestion(suppliedQuestion) {
   const reusedEngine = Boolean(engine);
   generation = new AbortController();
   setWorking(true);
+  reportActivity(true);
   try {
     const engineStartedAt = performance.now();
     const activeEngine = await ensureEngine(activity);
@@ -622,6 +632,7 @@ async function askQuestion(suppliedQuestion) {
   } finally {
     generation = null;
     setWorking(false);
+    reportActivity(false);
     statusElement.textContent = engine ? "Ready" : "Starts with your first question";
     liveStatusElement.textContent = engine ? "The assistant is ready." : "";
     questionElement.focus();

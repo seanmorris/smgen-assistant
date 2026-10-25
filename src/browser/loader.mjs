@@ -1,5 +1,11 @@
 // @ts-check
 
+import { adapterCompatibilityIssue } from "./model-selection.mjs";
+
+/** @typedef {import('../shared/types.mjs').PublicAssistantConfig} PublicAssistantConfig */
+
+const lotusIconMarkup = /** @type {typeof globalThis & {__SMGEN_ASSISTANT_LOTUS_ICON__: string}} */ (globalThis).__SMGEN_ASSISTANT_LOTUS_ICON__;
+
 (() => {
   if (document.querySelector("[data-smgen-assistant-launcher]")) return;
   const script = /** @type {HTMLScriptElement | null} */ (document.currentScript);
@@ -12,6 +18,24 @@
   const minimumHeight = 360;
   const defaultSize = { width: 400, height: 624 };
   const darkPreference = window.matchMedia?.("(prefers-color-scheme: dark)");
+
+  /** Check whether this browser can run at least one configured model. */
+  const supportsConfiguredModel = async () => {
+    if (!("gpu" in navigator)) return false;
+    try {
+      const [response, adapter] = await Promise.all([
+        fetch(new URL("config.json", assetBase)),
+        navigator.gpu.requestAdapter({ powerPreference: "high-performance" })
+      ]);
+      if (!response.ok || !adapter) return false;
+      const config = /** @type {PublicAssistantConfig} */ (await response.json());
+      const models = Array.isArray(config.models) && config.models.length ? config.models : [config.model];
+      const deviceMemoryGB = /** @type {Navigator & {deviceMemory?: number}} */ (navigator).deviceMemory ?? null;
+      return models.some((model) => model && adapterCompatibilityIssue(adapter, model, deviceMemoryGB) === null);
+    } catch {
+      return false;
+    }
+  };
 
   /** Unload and unregister the engine service worker used by older releases. */
   const retireLegacyServiceWorker = async () => {
@@ -74,16 +98,48 @@
   };
 
   const style = document.createElement("style");
-  style.textContent = `.smgen-assistant-launcher{position:fixed;right:1rem;bottom:1rem;z-index:2147483000;width:3.25rem;height:3.25rem;border:0;border-radius:50%;background:#182536;color:#fff;box-shadow:0 5px 22px #0005;font:700 1rem/1 system-ui;cursor:pointer}.smgen-assistant-launcher:focus-visible,.smgen-assistant-resize:focus-visible{outline:3px solid #64b5f6;outline-offset:3px}.smgen-assistant-shell{--smgen-assistant-surface:#fff;--smgen-assistant-text:#182536;--smgen-assistant-border:#b9c4d0;position:fixed;right:1rem;bottom:1rem;z-index:2147482999;min-width:20rem;min-height:22.5rem;max-width:calc(100vw - 2rem);max-height:calc(100dvh - 2rem);border-radius:.75rem;background:var(--smgen-assistant-surface);box-shadow:0 10px 40px #0006}.smgen-assistant-shell[data-theme=dark]{--smgen-assistant-surface:#111923;--smgen-assistant-text:#edf4fa;--smgen-assistant-border:#344354}.smgen-assistant-shell[hidden]{display:none}.smgen-assistant-frame{display:block;width:100%;height:100%;border:0;border-radius:inherit;background:var(--smgen-assistant-surface)}.smgen-assistant-resize{position:absolute;left:-.45rem;top:-.45rem;z-index:1;width:1.4rem;height:1.4rem;border:1px solid var(--smgen-assistant-border);border-radius:50%;background:var(--smgen-assistant-surface);color:var(--smgen-assistant-text);box-shadow:0 2px 8px #0004;cursor:nwse-resize;font:700 .8rem/1 system-ui;padding:0;touch-action:none}.smgen-assistant-shell.is-maximized{inset:.5rem;width:auto!important;height:auto!important;max-width:none;max-height:none}.smgen-assistant-shell.is-maximized .smgen-assistant-resize{display:none}@media(max-width:34rem){.smgen-assistant-shell{inset:.5rem;width:calc(100vw - 1rem)!important;height:calc(100dvh - 1rem)!important;min-width:0;min-height:0;max-width:none;max-height:none}.smgen-assistant-resize{display:none}}@media(prefers-reduced-motion:no-preference){.smgen-assistant-launcher{transition:transform .15s ease}.smgen-assistant-launcher:hover{transform:scale(1.04)}}`;
+  style.textContent = `
+.smgen-assistant-launcher{--smgen-lotus-fill:#fff;position:fixed;right:1rem;bottom:1rem;z-index:2147483000;display:grid;place-items:center;width:3.25rem;height:3.25rem;padding:.42rem;border:1px solid #b9c4d0;border-radius:50%;background:#fff;color:#111923;box-shadow:0 5px 22px #0005;cursor:pointer}
+.smgen-assistant-launcher[data-theme=dark]{--smgen-lotus-fill:#111923;border-color:#344354;background:#111923;color:#fff}
+.smgen-assistant-launcher[hidden]{display:none}
+.smgen-assistant-launcher-icon{display:block;width:2.35rem;height:auto;overflow:visible;pointer-events:none}
+.smgen-lotus-petal{transform:rotate(0deg);transform-box:view-box;transform-origin:72px 104px}
+.smgen-lotus-petal-outer-left{--smgen-lotus-angle:-60deg}
+.smgen-lotus-petal-outer-right{--smgen-lotus-angle:60deg}
+.smgen-lotus-petal-inner-left{--smgen-lotus-angle:-30deg}
+.smgen-lotus-petal-inner-right{--smgen-lotus-angle:30deg}
+.smgen-assistant-launcher.is-open .smgen-lotus-petal{transform:rotate(var(--smgen-lotus-angle))}
+.smgen-assistant-launcher:focus-visible,.smgen-assistant-resize:focus-visible{outline:3px solid #64b5f6;outline-offset:3px}
+.smgen-assistant-shell{--smgen-assistant-surface:#fff;--smgen-assistant-text:#182536;--smgen-assistant-border:#b9c4d0;position:fixed;right:1rem;bottom:5rem;z-index:2147482999;min-width:20rem;min-height:22.5rem;max-width:calc(100vw - 2rem);max-height:calc(100dvh - 6rem);border-radius:.75rem;background:var(--smgen-assistant-surface);box-shadow:0 10px 40px #0006}
+.smgen-assistant-shell[data-theme=dark]{--smgen-assistant-surface:#111923;--smgen-assistant-text:#edf4fa;--smgen-assistant-border:#344354}
+.smgen-assistant-shell[hidden]{display:none}
+.smgen-assistant-frame{display:block;width:100%;height:100%;border:0;border-radius:inherit;background:var(--smgen-assistant-surface)}
+.smgen-assistant-resize{position:absolute;left:-.45rem;top:-.45rem;z-index:1;width:1.4rem;height:1.4rem;border:1px solid var(--smgen-assistant-border);border-radius:50%;background:var(--smgen-assistant-surface);color:var(--smgen-assistant-text);box-shadow:0 2px 8px #0004;cursor:nwse-resize;font:700 .8rem/1 system-ui;padding:0;touch-action:none}
+.smgen-assistant-shell.is-maximized{inset:.5rem .5rem 4.75rem;width:auto!important;height:auto!important;max-width:none;max-height:none}
+.smgen-assistant-shell.is-maximized .smgen-assistant-resize{display:none}
+@media(max-width:34rem){.smgen-assistant-shell{inset:.5rem .5rem 4.75rem;width:auto!important;height:auto!important;min-width:0;min-height:0;max-width:none;max-height:none}.smgen-assistant-resize{display:none}}
+@media(prefers-reduced-motion:no-preference){
+  .smgen-assistant-launcher{transition:transform .15s ease}
+  .smgen-assistant-launcher:hover{transform:scale(1.04)}
+  .smgen-lotus-petal{transition:transform .42s cubic-bezier(.2,.8,.2,1)}
+  .smgen-assistant-launcher.is-thinking .smgen-lotus-petal{animation:smgen-lotus-thinking 1.35s ease-in-out infinite}
+  @keyframes smgen-lotus-thinking{0%,100%{transform:rotate(0deg)}50%{transform:rotate(var(--smgen-lotus-angle))}}
+}
+@media(prefers-reduced-motion:reduce){.smgen-assistant-launcher.is-thinking .smgen-lotus-petal{transform:rotate(var(--smgen-lotus-angle))}}
+`;
   document.head.append(style);
 
   const button = document.createElement("button");
   button.type = "button";
   button.className = "smgen-assistant-launcher";
   button.dataset.smgenAssistantLauncher = "";
+  button.dataset.theme = readTheme();
   button.setAttribute("aria-label", "Open documentation assistant");
   button.setAttribute("aria-expanded", "false");
-  button.textContent = "Ask";
+  button.setAttribute("aria-busy", "false");
+  button.title = "Open documentation assistant";
+  button.innerHTML = lotusIconMarkup;
+  button.hidden = true;
   document.body.append(button);
 
   /** @type {HTMLDivElement | null} */
@@ -128,6 +184,7 @@
   /** Apply the host theme to the panel chrome and its isolated frame. */
   const syncTheme = () => {
     theme = readTheme();
+    button.dataset.theme = theme;
     if (shell) shell.dataset.theme = theme;
     frame?.contentWindow?.postMessage({
       type: "smgen-assistant:theme",
@@ -135,13 +192,25 @@
     }, expectedOrigin);
   };
 
+  /**
+   * Reflect the panel state in the launcher icon and accessible name.
+   *
+   * @param {boolean} openState
+   */
+  const setLauncherOpenState = (openState) => {
+    button.classList.toggle("is-open", openState);
+    button.setAttribute("aria-expanded", String(openState));
+    const label = openState ? "Close documentation assistant" : "Open documentation assistant";
+    button.setAttribute("aria-label", label);
+    button.title = label;
+    storeOpenState(openState ? "1" : "0");
+  };
+
   /** Hide the assistant while retaining its in-tab state. */
   const close = () => {
     if (!shell) return;
     shell.hidden = true;
-    button.hidden = false;
-    button.setAttribute("aria-expanded", "false");
-    storeOpenState("0");
+    setLauncherOpenState(false);
     button.focus();
   };
 
@@ -240,16 +309,17 @@
     }
     if (!shell) return;
     shell.hidden = false;
-    button.hidden = true;
-    button.setAttribute("aria-expanded", "true");
-    storeOpenState("1");
+    setLauncherOpenState(true);
     frame.contentWindow?.focus();
     sendContext();
     sendLayout();
     syncTheme();
   };
 
-  button.addEventListener("click", () => { void open(); });
+  button.addEventListener("click", () => {
+    if (shell && !shell.hidden) close();
+    else void open();
+  });
   window.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && shell && !shell.hidden) close();
   });
@@ -267,6 +337,10 @@
       frame.style.visibility = "visible";
       frame.contentWindow?.focus();
     }
+    if (event.data.type === "smgen-assistant:activity" && typeof event.data.active === "boolean") {
+      button.classList.toggle("is-thinking", event.data.active);
+      button.setAttribute("aria-busy", String(event.data.active));
+    }
     if (event.data.type === "smgen-assistant:close") close();
     if (event.data.type === "smgen-assistant:toggle-maximize") toggleMaximized();
   });
@@ -274,5 +348,10 @@
     new MutationObserver(syncTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
   }
   darkPreference?.addEventListener?.("change", syncTheme);
-  if (restoreOpenState()) void open();
+  void (async () => {
+    if (!await supportsConfiguredModel()) return;
+    button.hidden = false;
+    syncTheme();
+    if (restoreOpenState()) await open();
+  })();
 })();

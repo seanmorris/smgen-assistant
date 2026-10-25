@@ -26,6 +26,7 @@ class FakeElement {
     this.src = "";
     this.href = "";
     this.textContent = "";
+    this.innerHTML = "";
     this.className = "";
     /** @type {Record<string, string>} */
     this.dataset = {};
@@ -44,7 +45,17 @@ class FakeElement {
       postMessage(message) { messages.push(message); },
       focus() {}
     };
-    this.classList = { toggle() {} };
+    /** @type {Set<string>} */
+    this.classes = new Set();
+    this.classList = {
+      toggle: (/** @type {string} */ name, /** @type {boolean | undefined} */ force) => {
+        const enabled = force ?? !this.classes.has(name);
+        if (enabled) this.classes.add(name);
+        else this.classes.delete(name);
+        return enabled;
+      },
+      contains: (/** @type {string} */ name) => this.classes.has(name)
+    };
     /** @type {Map<string, Function>} */
     this.listeners = new Map();
   }
@@ -65,7 +76,7 @@ class FakeElement {
   focus() {}
 }
 
-test("loader does not create or request the iframe before activation", async () => {
+test("loader verifies model support before showing its deferred launcher", async () => {
   /** @type {FakeElement[]} */
   const appended = [];
   const head = { append: (/** @type {FakeElement} */ element) => appended.push(element) };
@@ -74,11 +85,33 @@ test("loader does not create or request the iframe before activation", async () 
   const values = new Map();
   const persistentValues = new Map();
   let hostTheme = "dark";
+  /** @type {string[]} */
+  const fetched = [];
   /** @type {Function | undefined} */
   let notifyThemeChange;
   const context = {
     URL,
-    navigator: {},
+    navigator: {
+      deviceMemory: 16,
+      gpu: {
+        requestAdapter: async () => ({
+          features: new Set(),
+          limits: {
+            maxBufferSize: 512 * 1024 * 1024,
+            maxStorageBufferBindingSize: 256 * 1024 * 1024,
+            maxComputeWorkgroupStorageSize: 32 * 1024,
+            maxStorageBuffersPerShaderStage: 10
+          }
+        })
+      }
+    },
+    fetch: async (/** @type {URL} */ url) => {
+      fetched.push(url.href);
+      return {
+        ok: true,
+        json: async () => ({ model: { id: "test-model-q4f32_1", label: "Test model" } })
+      };
+    },
     location: { href: "https://example.test/project/page.html" },
     sessionStorage: {
       getItem: (/** @type {string} */ key) => values.get(key) ?? null,
@@ -115,6 +148,12 @@ test("loader does not create or request the iframe before activation", async () 
   vm.runInNewContext(source, context);
   assert.deepEqual(appended.map((element) => element.tagName), ["STYLE", "BUTTON"]);
   const button = appended[1];
+  assert.equal(button?.hidden, true);
+  assert.match(button?.innerHTML ?? "", /Denis Giffeler/u);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(fetched, ["https://example.test/project/__smgen-assistant/config.json"]);
+  assert.equal(button?.hidden, false);
+  assert.deepEqual(appended.map((element) => element.tagName), ["STYLE", "BUTTON"]);
   button?.dispatch("click");
   await Promise.resolve();
   assert.deepEqual(appended.map((element) => element.tagName), ["STYLE", "BUTTON", "DIV"]);
@@ -122,6 +161,9 @@ test("loader does not create or request the iframe before activation", async () 
   const frame = /** @type {FakeElement | undefined} */ (shell?.children[0]);
   assert.equal(frame?.tagName, "IFRAME");
   assert.equal(frame?.src, "https://example.test/project/__smgen-assistant/frame.html");
+  assert.equal(button?.hidden, false);
+  assert.equal(button?.attributes.get("aria-expanded"), "true");
+  assert.equal(button?.classes.has("is-open"), true);
   assert.equal(shell?.dataset.theme, "dark");
   assert.equal(frame?.style.visibility, "hidden");
   frame?.dispatch("load");
@@ -133,11 +175,90 @@ test("loader does not create or request the iframe before activation", async () 
     data: { type: "smgen-assistant:theme-applied" }
   });
   assert.equal(frame?.style.visibility, "visible");
+  events.get("message")?.({
+    origin: "https://example.test",
+    source: frame?.contentWindow,
+    data: { type: "smgen-assistant:activity", active: true }
+  });
+  assert.equal(button?.classes.has("is-thinking"), true);
+  assert.equal(button?.attributes.get("aria-busy"), "true");
   hostTheme = "light";
   notifyThemeChange?.();
   assert.equal(shell?.dataset.theme, "light");
   assert.equal(/** @type {{type?: string, theme?: string}} */ (frame?.contentWindow.messages.at(-1)).theme, "light");
   assert.equal(persistentValues.has("smgen-assistant:size:/project/__smgen-assistant/"), false);
+  button?.dispatch("click");
+  assert.equal(shell?.hidden, true);
+  assert.equal(button?.attributes.get("aria-expanded"), "false");
+  assert.equal(button?.classes.has("is-open"), false);
+});
+
+test("loader stays hidden when no configured model matches the adapter", async () => {
+  /** @type {FakeElement[]} */
+  const appended = [];
+  const context = {
+    URL,
+    navigator: {
+      deviceMemory: 32,
+      gpu: {
+        requestAdapter: async () => ({
+          features: new Set(),
+          limits: {
+            maxBufferSize: 512 * 1024 * 1024,
+            maxStorageBufferBindingSize: 256 * 1024 * 1024,
+            maxComputeWorkgroupStorageSize: 32 * 1024,
+            maxStorageBuffersPerShaderStage: 10
+          }
+        })
+      }
+    },
+    fetch: async () => ({
+      ok: true,
+      json: async () => ({ model: { id: "f16-only-q4f16_1", label: "f16 only" } })
+    }),
+    location: { href: "https://example.test/project/page.html" },
+    sessionStorage: { getItem: () => "1", setItem() {} },
+    localStorage: { getItem: () => null, setItem() {} },
+    document: {
+      currentScript: { src: "https://example.test/project/__smgen-assistant/loader.js" },
+      title: "Page",
+      documentElement: { classList: { contains: () => false } },
+      head: { append: (/** @type {FakeElement} */ element) => appended.push(element) },
+      body: { append: (/** @type {FakeElement} */ element) => appended.push(element) },
+      querySelector: () => null,
+      createElement: (/** @type {string} */ tag) => new FakeElement(tag)
+    },
+    window: {
+      innerWidth: 1280,
+      innerHeight: 800,
+      matchMedia: () => ({ matches: false, addEventListener() {} }),
+      addEventListener() {}
+    },
+    MutationObserver: class {
+      /** Ignore mutations in this isolated loader test. */
+      observe() {}
+    }
+  };
+  const source = await readFile(new URL("../dist/browser/loader.js", import.meta.url), "utf8");
+  vm.runInNewContext(source, context);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(appended.map((element) => element.tagName), ["STYLE", "BUTTON"]);
+  assert.equal(appended[1]?.hidden, true);
+});
+
+test("lotus launcher retains its license metadata and state animation hooks", async () => {
+  const svg = await readFile(new URL("../src/browser/lotus.svg", import.meta.url), "utf8");
+  const loader = await readFile(new URL("../src/browser/loader.mjs", import.meta.url), "utf8");
+  const frame = await readFile(new URL("../src/browser/frame.mjs", import.meta.url), "utf8");
+  assert.match(svg, /Denis Giffeler \(Wikimedia Commons user Giffeler\)/u);
+  assert.match(svg, /commons\.wikimedia\.org\/wiki\/File:Lotus_flower_animation\.svg/u);
+  assert.match(svg, /creativecommons\.org\/licenses\/by\/4\.0/u);
+  assert.match(svg, /Modified for smgen-assistant/u);
+  assert.match(loader, /is-open \.smgen-lotus-petal/u);
+  assert.match(loader, /smgen-lotus-thinking/u);
+  assert.match(loader, /smgen-assistant:activity/u);
+  assert.match(frame, /reportActivity\(true\)/u);
+  assert.match(frame, /reportActivity\(false\)/u);
 });
 
 test("loader retires a legacy engine service worker before opening the frame", async () => {

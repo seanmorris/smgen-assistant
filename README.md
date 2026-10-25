@@ -2,7 +2,7 @@
 
 smgen-assistant adds a local AI documentation assistant to an [SMGen](https://github.com/seanmorris/smgen) site. It builds a static search corpus from the site's Markdown and runs [WebLLM](https://github.com/mlc-ai/web-llm) in the visitor's browser.
 
-The initial page loads one small script. The assistant frame, corpus, WebLLM runtime, worker, and model wait until the visitor opens the assistant. The visitor can type immediately. The first question starts the model download and continues automatically when the model is ready.
+The initial page loads one small script. It fetches the generated configuration and checks the WebGPU adapter before showing the launcher. The assistant frame, corpus, WebLLM runtime, worker, and model wait until the visitor opens the assistant. The visitor can type immediately. The first question starts the model download and continues automatically when the model is ready.
 
 ## Requirements
 
@@ -184,11 +184,11 @@ The browser loads the full corpus when the visitor opens the assistant. A few me
 
 ## Loading and browser isolation
 
-`loader.js` derives its asset path from its own script URL, so root and nested `BASE_URL` deployments use the same output. It creates the iframe only after activation. An open assistant returns after an ordinary static page navigation through tab-scoped state.
+`loader.js` derives its asset path from its own script URL, so root and nested `BASE_URL` deployments use the same output. It shows the launcher only when the adapter can run at least one configured model. It creates the iframe only after activation. An open assistant returns after an ordinary static page navigation through tab-scoped state.
 
-Visitors can resize the panel with its upper-left handle or the handle's arrow-key controls. The expand button fills the viewport and restores the previous size. The custom size persists for the assistant path. Small screens always use the available viewport.
+Visitors can resize the panel with its upper-left handle or the handle's arrow-key controls. The expand button fills the space above the launcher and restores the previous size. The custom size persists for the assistant path. Small screens use the available space above the launcher.
 
-The panel follows a `light` or `dark` class on the host document. If the host does not set either class, it follows the visitor's browser preference. Theme changes apply to the panel and iframe together.
+The panel and lotus launcher follow a `light` or `dark` class on the host document. If the host does not set either class, they follow the visitor's browser preference. The lotus opens with the panel and pulses while the assistant processes a question.
 
 WebLLM runs in a dedicated worker so generation cannot block the page. A new assistant release retires service workers left by older releases before loading the model. The model files remain in browser storage between visits.
 
