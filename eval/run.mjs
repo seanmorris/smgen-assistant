@@ -23,6 +23,7 @@ function options() {
     variants: values.get("--variants") ?? "first",
     scenarios: new Set((values.get("--scenarios") ?? "").split(",").map((value) => value.trim()).filter(Boolean)),
     sequences: values.get("--sequences") === "true",
+    clearHttpCache: values.get("--clear-http-cache") === "true",
     models
   };
 }
@@ -121,6 +122,23 @@ async function deleteModelFromDisk(context, url, modelId) {
 }
 
 /**
+ * Clear Chromium's ordinary HTTP cache in a disposable evaluation profile.
+ *
+ * @param {import("playwright-core").BrowserContext} context
+ * @returns {Promise<void>}
+ */
+async function clearBrowserHttpCache(context) {
+  const page = await context.newPage();
+  const session = await context.newCDPSession(page);
+  try {
+    await session.send("Network.clearBrowserCache");
+  } finally {
+    await session.detach();
+    await page.close();
+  }
+}
+
+/**
  * Exercise one model while its WebLLM worker is the only evaluation worker alive.
  *
  * @param {import("playwright-core").Page} page
@@ -188,9 +206,11 @@ async function main() {
         await new Promise((resolve) => setTimeout(resolve, 1_000));
         process.stdout.write(`${modelId} deleting cached files\n`);
         const cleanup = await deleteModelFromDisk(context, settings.url, modelId);
-        result.cleanups.push({ modelId, ...cleanup, finishedAt: new Date().toISOString() });
+        if (settings.clearHttpCache) await clearBrowserHttpCache(context);
+        result.cleanups.push({ modelId, ...cleanup, httpCacheCleared: settings.clearHttpCache, finishedAt: new Date().toISOString() });
         await save(settings.output, result);
-        process.stdout.write(`${modelId} deleted from disk (${cleanup.deletedRecords} residual records removed)\n`);
+        const cacheDetail = settings.clearHttpCache ? " and HTTP cache cleared" : "";
+        process.stdout.write(`${modelId} deleted from disk (${cleanup.deletedRecords} residual records removed${cacheDetail})\n`);
       }
     }
   } finally {

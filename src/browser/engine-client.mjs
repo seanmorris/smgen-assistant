@@ -130,6 +130,32 @@ async function countIndexedDbArtifacts(databaseName, matches) {
 }
 
 /**
+ * Remove a broken artifact database that lacks WebLLM's expected object store.
+ *
+ * @param {string} databaseName
+ * @returns {Promise<void>}
+ */
+async function removeStorelessIndexedDb(databaseName) {
+  const databases = await indexedDB.databases();
+  if (!databases.some(({ name }) => name === databaseName)) return;
+  const database = await new Promise((resolve, reject) => {
+    const request = indexedDB.open(databaseName);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error ?? new Error(`Could not open ${databaseName}.`));
+  });
+  const typedDatabase = /** @type {IDBDatabase} */ (database);
+  const valid = typedDatabase.objectStoreNames.contains("urls");
+  typedDatabase.close();
+  if (valid) return;
+  await new Promise((resolve, reject) => {
+    const request = indexedDB.deleteDatabase(databaseName);
+    request.onsuccess = () => resolve(undefined);
+    request.onerror = () => reject(request.error ?? new Error(`Could not repair ${databaseName}.`));
+    request.onblocked = () => reject(new Error(`Could not repair ${databaseName} because it is still open.`));
+  });
+}
+
+/**
  * Remove one model's weights, tokenizer, configuration, and WebAssembly artifact from disk.
  *
  * @param {string} modelId
@@ -146,6 +172,11 @@ export async function deleteAssistantModelFromDisk(modelId) {
   const matchesModel = (/** @type {string} */ url) => url.startsWith(modelUrl);
   /** Report whether an IndexedDB key is the selected model's WebAssembly module. */
   const matchesWasm = (/** @type {string} */ url) => url === record.model_lib;
+  await Promise.all([
+    removeStorelessIndexedDb("webllm/model"),
+    removeStorelessIndexedDb("webllm/config"),
+    removeStorelessIndexedDb("webllm/wasm")
+  ]);
   await deleteModelAllInfoInCache(modelId, appConfig);
   const deleted = await Promise.all([
     deleteIndexedDbArtifacts("webllm/model", matchesModel),

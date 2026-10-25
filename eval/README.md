@@ -18,6 +18,7 @@ npm run eval -- \
   --scenarios create-first-site,select-menu-pages,deploy-github-pages \
   --variants first \
   --sequences false \
+  --clear-http-cache true \
   --output /tmp/smgen-assistant-eval.json
 
 node eval/summarize.mjs /tmp/smgen-assistant-eval.json
@@ -33,6 +34,12 @@ the runner closes that page, removes the model weights, tokenizer, configuration
 and WebAssembly artifact from IndexedDB, and verifies that no matching records
 remain before opening the next model. This keeps both GPU memory and disk use to
 one evaluated model at a time.
+
+Use `--clear-http-cache true` only with a disposable browser profile. Model
+downloads also pass through Chromium's ordinary HTTP cache, so this option
+clears that profile-wide cache after every candidate. Start the browser with a
+separate `--user-data-dir`; never point a cache-clearing run at your daily
+browser profile.
 
 For every answer, record:
 

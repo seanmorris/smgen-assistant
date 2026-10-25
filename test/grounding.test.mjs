@@ -86,6 +86,27 @@ test("generated prose receives citations from its supporting passages", () => {
   });
 });
 
+test("generated prose ignores private reasoning tags from chat templates", () => {
+  for (const answer of [
+    "<think>Compare the source before answering.</think>\n\n- Initialize the site with `smgen init`.",
+    "<think>\n\n</think>\n\n- Initialize the site with `smgen init`.\n\n</think>"
+  ]) {
+    assert.deepEqual(formatGeneratedAnswer(answer, sources, "stop"), {
+      ok: true,
+      answer: "- Initialize the site with `smgen init`. [Source 1]",
+      sources,
+      filtered: false
+    });
+  }
+});
+
+test("generated prose rejects output that contains only private reasoning", () => {
+  assert.deepEqual(formatGeneratedAnswer("<think>Consider the documentation.</think>", sources, "stop"), {
+    ok: false,
+    reason: "empty"
+  });
+});
+
 test("generated prose drops unsupported claims while keeping grounded bullets", () => {
   assert.deepEqual(formatGeneratedAnswer([
     "- Initialize the site with `smgen init`.",

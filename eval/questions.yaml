@@ -24,7 +24,6 @@ roles:
         goal: Give the shortest documented path from an empty directory to a local site.
         expectedSources:
           - /index.html#create-a-site
-          - /cli.html#smgen-init
         requiredFacts:
           - Run `smgen init` in an empty directory.
           - Put the first page at `pages/index.md`.

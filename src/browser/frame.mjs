@@ -312,14 +312,36 @@ async function ensureEngine(activity) {
   liveStatusElement.textContent = "Downloading the assistant model.";
   modelNoteElement.textContent = `${modelNote(selectedModel)} Cached after the first run.`;
   const module = await import("./engine-client.mjs");
-  engine = await module.createAssistantEngine({
-    modelId: selectedModel.id,
-    assetBase,
-    onProgress: (report) => {
-      activity.progress.value = Math.max(0, Math.min(1, report.progress));
-      activity.label.textContent = report.text || "Downloading model…";
+  const startedAt = performance.now();
+  let lastUpdateAt = startedAt;
+  let lastText = "Downloading model…";
+  let lastProgress = 0;
+  const progressTimer = window.setInterval(() => {
+    if (performance.now() - lastUpdateAt < 8_000) return;
+    const elapsed = Math.max(1, Math.round((performance.now() - startedAt) / 1_000));
+    if (lastProgress >= 0.99) {
+      activity.progress.removeAttribute("value");
+      activity.label.textContent = `Download complete. Starting the model… ${elapsed} seconds elapsed.`;
+      statusElement.textContent = "Starting model";
+      return;
     }
-  });
+    activity.label.textContent = `${lastText} Still working; ${elapsed} seconds elapsed.`;
+  }, 2_000);
+  try {
+    engine = await module.createAssistantEngine({
+      modelId: selectedModel.id,
+      assetBase,
+      onProgress: (report) => {
+        lastUpdateAt = performance.now();
+        lastProgress = Math.max(0, Math.min(1, report.progress));
+        lastText = report.text || "Downloading model…";
+        activity.progress.value = lastProgress;
+        activity.label.textContent = lastText;
+      }
+    });
+  } finally {
+    window.clearInterval(progressTimer);
+  }
   modelNoteElement.textContent = modelNote(selectedModel, true);
   return engine;
 }

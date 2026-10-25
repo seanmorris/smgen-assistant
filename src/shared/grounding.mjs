@@ -43,6 +43,19 @@ function proseBlocks(answer) {
 }
 
 /**
+ * Remove private reasoning blocks and stray closing tags emitted by chat templates.
+ *
+ * @param {string} answer
+ */
+function visibleGeneratedText(answer) {
+  let visible = answer.trim();
+  while (/^<think>[\s\S]*?<\/think>\s*/iu.test(visible)) {
+    visible = visible.replace(/^<think>[\s\S]*?<\/think>\s*/iu, "").trimStart();
+  }
+  return visible.replace(/\s*<\/think>\s*$/iu, "").trim();
+}
+
+/**
  * Build a short answer from exact prose in the strongest retrieved passage.
  *
  * @param {CorpusChunk} source
@@ -265,9 +278,10 @@ export function formatGroundedMarkdown(answer, sources, finishReason) {
  * @returns {{ok: true, answer: string, sources: CorpusChunk[], filtered: boolean} | {ok: false, reason: string, unsupported?: string[]}}
  */
 export function formatGeneratedAnswer(answer, sources, _finishReason) {
-  if (!answer.trim()) return { ok: false, reason: "empty" };
+  const visible = visibleGeneratedText(answer);
+  if (!visible) return { ok: false, reason: "empty" };
   if (!sources.length) return { ok: false, reason: "missing-sources" };
-  const rawBlocks = proseBlocks(answer).slice(0, 6);
+  const rawBlocks = proseBlocks(visible).slice(0, 6);
   /** @type {Array<{content: string, source: number}>} */
   const matched = [];
   for (const [blockIndex, raw] of rawBlocks.entries()) {
