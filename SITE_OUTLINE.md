@@ -97,7 +97,9 @@ VI. Development and Evaluation
    C. Release the package
       1. Update the shared version fields.
       2. Inspect the package archive.
-      3. Publish a tagged GitHub release and attach the archive.
+      3. Push a stable `v0.0.0` tag that matches the package version.
+      4. Validate and publish the package through GitHub Actions.
+      5. Attach the inspected archive to the GitHub release when needed.
 
 VII. Privacy and Licensing
    A. Define the local data flow

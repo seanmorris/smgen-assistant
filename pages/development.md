@@ -117,3 +117,20 @@ npm pack --dry-run
 The archive includes the executable, compiled assets, evaluation data, license,
 and third-party notices. Confirm the shared version in `package.json` and
 `src/shared/version.mjs` before tagging a release.
+
+Commit the version, then push its matching stable tag:
+
+```bash
+VERSION="$(node -p "require('./package.json').version")"
+git tag "v${VERSION}"
+git push origin "v${VERSION}"
+```
+
+The `publish.yml` workflow accepts tags in the `v0.0.0` form. It rejects a tag
+that differs from the package version, reruns the checks, inspects the archive,
+and publishes it to npm with provenance.
+
+Publish the first registry version interactively with two-factor
+authentication. Then configure npm trusted publishing for
+`seanmorris/smgen-assistant` and `publish.yml` and allow `npm publish`. Later
+releases need no npm token.

@@ -236,6 +236,26 @@ context.
 
 `npm pack --dry-run` shows the release contents. The package includes compiled browser assets because a generated site must serve WebLLM without a bundler.
 
+### Publish a Release
+
+Update `package.json`, `package-lock.json`, and `src/shared/version.mjs`, commit
+the version, then push the matching stable tag:
+
+```sh
+VERSION="$(node -p "require('./package.json').version")"
+git tag "v${VERSION}"
+git push origin "v${VERSION}"
+```
+
+The `publish.yml` workflow accepts tags in the `v0.0.0` form. It rejects a tag
+that differs from the package version, runs the package checks, inspects the
+archive, and publishes it to npm with provenance.
+
+Publish the first registry version interactively with two-factor
+authentication. Then configure npm trusted publishing for
+`seanmorris/smgen-assistant` and `publish.yml` and allow `npm publish`. Later
+releases need no npm token.
+
 ## License
 
 smgen-assistant uses the Apache License 2.0. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for WebLLM and model licensing notes.

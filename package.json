@@ -21,7 +21,7 @@
     "node": ">=20"
   },
   "bin": {
-    "smgen-assistant": "./bin/smgen-assistant.mjs"
+    "smgen-assistant": "bin/smgen-assistant.mjs"
   },
   "files": [
     "bin",
