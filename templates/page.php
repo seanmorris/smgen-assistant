@@ -36,6 +36,7 @@ $if(canonical)$
 	<link rel="canonical" href="$canonical$" />
 $endif$
 	<meta name="title" content="$if(pagetitle)$${pagetitle}$else$${title}$endif$">
+<?php renderJsonLd($frontmatter, $pageFile); ?>
 	<link rel="icon" type="image/png" href="<?=escapeHtml(resolveAssetUrl('/icon-16.png'))?>">
 	<link rel="sitemap" href="<?=escapeHtml(resolveAssetUrl('/sitemap.xml'))?>" />
 <?php foreach(rssFeedDefinitions() as $rssFeed): ?>

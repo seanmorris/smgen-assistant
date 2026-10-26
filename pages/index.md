@@ -4,6 +4,44 @@ description: Build a private in-browser documentation assistant for an SMGen sit
 weight: 0
 author:
   - name: Sean Morris
+jsonld:
+  "@context": https://schema.org
+  "@graph":
+    - "@type": WebSite
+      "@id": "https://seanmorris.github.io/smgen-assistant/#website"
+      url: https://seanmorris.github.io/smgen-assistant/
+      name: smgen-assistant
+      description: Build a private, in-browser AI assistant for an SMGen site.
+      inLanguage: en
+      author:
+        "@id": "https://seanmorris.github.io/smgen-assistant/#author"
+    - "@type": WebPage
+      "@id": "https://seanmorris.github.io/smgen-assistant/#webpage"
+      url: https://seanmorris.github.io/smgen-assistant/
+      name: Getting Started
+      description: Build a private, in-browser AI assistant for an SMGen site.
+      inLanguage: en
+      isPartOf:
+        "@id": "https://seanmorris.github.io/smgen-assistant/#website"
+      about:
+        "@id": "https://seanmorris.github.io/smgen-assistant/#software"
+      mainEntity:
+        "@id": "https://seanmorris.github.io/smgen-assistant/#software"
+      author:
+        "@id": "https://seanmorris.github.io/smgen-assistant/#author"
+    - "@type": SoftwareSourceCode
+      "@id": "https://seanmorris.github.io/smgen-assistant/#software"
+      url: https://seanmorris.github.io/smgen-assistant/
+      name: smgen-assistant
+      description: Build a private, in-browser AI assistant for an SMGen site.
+      codeRepository: https://github.com/seanmorris/smgen-assistant
+      license: https://www.apache.org/licenses/LICENSE-2.0
+      programmingLanguage: JavaScript
+      author:
+        "@id": "https://seanmorris.github.io/smgen-assistant/#author"
+    - "@type": Person
+      "@id": "https://seanmorris.github.io/smgen-assistant/#author"
+      name: Sean Morris
 menus:
   documentation:
     title: Getting Started
