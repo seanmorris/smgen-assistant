@@ -174,6 +174,8 @@ test("loader verifies model support before showing its deferred launcher", async
   frame?.dispatch("load");
   assert.equal(/** @type {{type?: string, theme?: string}} */ (frame?.contentWindow.messages.at(-1)).type, "smgen-assistant:theme");
   assert.equal(/** @type {{type?: string, theme?: string}} */ (frame?.contentWindow.messages.at(-1)).theme, "dark");
+  const channelId = /** @type {{channelId?: string}} */ (frame?.contentWindow.messages.at(-1)).channelId;
+  assert.equal(typeof channelId, "string");
   events.get("message")?.({
     origin: "https://example.test",
     source: frame?.contentWindow,
@@ -187,12 +189,34 @@ test("loader verifies model support before showing its deferred launcher", async
   });
   assert.equal(button?.classes.has("is-thinking"), true);
   assert.equal(button?.attributes.get("aria-busy"), "true");
+  events.get("message")?.({
+    origin: "https://example.test",
+    source: context.window,
+    data: { type: "smgen-assistant:toggle-maximize", channelId }
+  });
+  assert.equal(shell?.classes.has("is-maximized"), true);
+  events.get("message")?.({
+    origin: "https://example.test",
+    source: context.window,
+    data: { type: "smgen-assistant:toggle-maximize", channelId: "wrong-channel" }
+  });
+  assert.equal(shell?.classes.has("is-maximized"), true);
+  events.get("message")?.({
+    origin: "https://example.test",
+    source: context.window,
+    data: { type: "smgen-assistant:toggle-maximize", channelId }
+  });
+  assert.equal(shell?.classes.has("is-maximized"), false);
   hostTheme = "light";
   notifyThemeChange?.();
   assert.equal(shell?.dataset.theme, "light");
   assert.equal(/** @type {{type?: string, theme?: string}} */ (frame?.contentWindow.messages.at(-1)).theme, "light");
   assert.equal(persistentValues.has("smgen-assistant:size:/project/__smgen-assistant/"), false);
-  button?.dispatch("click");
+  events.get("message")?.({
+    origin: "https://example.test",
+    source: context.window,
+    data: { type: "smgen-assistant:close", channelId }
+  });
   assert.equal(shell?.hidden, true);
   assert.equal(button?.attributes.get("aria-expanded"), "false");
   assert.equal(button?.classes.has("is-open"), false);
@@ -272,9 +296,19 @@ test("lotus launcher retains its license metadata and state animation hooks", as
   assert.match(svg, /Modified for smgen-assistant/u);
   assert.match(loader, /is-open \.smgen-lotus-petal/u);
   assert.match(loader, /smgen-lotus-thinking/u);
+  assert.match(loader, /--smgen-lotus-fill:#fff;[^}]*background:#111923;color:#fff/u);
+  assert.match(loader, /\[data-theme=dark\]\{--smgen-lotus-fill:#111923;[^}]*background:#fff;color:#111923/u);
   assert.match(loader, /smgen-assistant:activity/u);
   assert.match(frame, /reportActivity\(true\)/u);
   assert.match(frame, /reportActivity\(false\)/u);
+});
+
+test("frame controls use the authenticated host channel", async () => {
+  const frame = await readFile(new URL("../src/browser/frame.mjs", import.meta.url), "utf8");
+  assert.match(frame, /function postToHost\(message\) \{\s*window\.parent\.postMessage\(\{ \.\.\.message, channelId: hostChannelId \}, location\.origin\);\s*\}/u);
+  assert.match(frame, /maximizeButton\.addEventListener\("click", \(\) => postToHost\(\{ type: "smgen-assistant:toggle-maximize" \}\)\)/u);
+  assert.match(frame, /closeButton\.addEventListener\("click", \(\) => postToHost\(\{ type: "smgen-assistant:close" \}\)\)/u);
+  assert.doesNotMatch(frame, /addEventListener\("click", \(\) => window\.parent\.postMessage/u);
 });
 
 test("loader retires a legacy engine service worker before opening the frame", async () => {

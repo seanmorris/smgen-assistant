@@ -70,9 +70,19 @@ let pageContext = { url: "", title: "" };
 /** @type {TranscriptMessage[]} */
 let transcript = [];
 let maximized = false;
+let hostChannelId = "";
 
 if (evaluationMode) {
   /** @type {EvaluationWindow} */ (window).__smgenEvaluationDeleteModel = deleteEvaluationModel;
+}
+
+/**
+ * Send a message through the authenticated host channel.
+ *
+ * @param {Record<string, unknown>} message
+ */
+function postToHost(message) {
+  window.parent.postMessage({ ...message, channelId: hostChannelId }, location.origin);
 }
 
 /**
@@ -82,7 +92,7 @@ if (evaluationMode) {
  */
 function reportEvaluation(result) {
   if (!evaluationMode) return;
-  window.parent.postMessage({ type: "smgen-assistant:evaluation-result", version: 1, ...result }, location.origin);
+  postToHost({ type: "smgen-assistant:evaluation-result", version: 1, ...result });
 }
 
 /**
@@ -288,7 +298,7 @@ function setWorking(working) {
  * @param {boolean} active
  */
 function reportActivity(active) {
-  window.parent.postMessage({ type: "smgen-assistant:activity", active }, location.origin);
+  postToHost({ type: "smgen-assistant:activity", active });
 }
 
 /**
@@ -681,13 +691,14 @@ questionElement.addEventListener("keydown", (event) => {
 cancelButton.addEventListener("click", () => generation?.abort());
 newChatButton.addEventListener("click", () => void newChat());
 modelSelectElement.addEventListener("change", () => void changeModel());
-maximizeButton.addEventListener("click", () => window.parent.postMessage({ type: "smgen-assistant:toggle-maximize" }, location.origin));
-closeButton.addEventListener("click", () => window.parent.postMessage({ type: "smgen-assistant:close" }, location.origin));
+maximizeButton.addEventListener("click", () => postToHost({ type: "smgen-assistant:toggle-maximize" }));
+closeButton.addEventListener("click", () => postToHost({ type: "smgen-assistant:close" }));
 window.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") window.parent.postMessage({ type: "smgen-assistant:close" }, location.origin);
+  if (event.key === "Escape") postToHost({ type: "smgen-assistant:close" });
 });
 window.addEventListener("message", (event) => {
   if (event.origin !== location.origin || event.source !== window.parent || typeof event.data !== "object" || event.data === null) return;
+  if (typeof event.data.channelId === "string") hostChannelId = event.data.channelId;
   if (event.data.type === "smgen-assistant:context" && typeof event.data.url === "string" && typeof event.data.title === "string") {
     pageContext = { url: event.data.url, title: event.data.title };
   }
@@ -699,7 +710,7 @@ window.addEventListener("message", (event) => {
   }
   if (event.data.type === "smgen-assistant:theme" && (event.data.theme === "light" || event.data.theme === "dark")) {
     document.documentElement.dataset.theme = event.data.theme;
-    window.parent.postMessage({ type: "smgen-assistant:theme-applied" }, location.origin);
+    postToHost({ type: "smgen-assistant:theme-applied" });
   }
 });
 
@@ -747,7 +758,7 @@ async function start() {
     modelNoteElement.textContent = "The assistant data could not load.";
     appendMessage({ role: "assistant", content: "The assistant data could not load. Reload the page to try again." });
   } finally {
-    window.parent.postMessage({ type: "smgen-assistant:ready" }, location.origin);
+    postToHost({ type: "smgen-assistant:ready" });
     questionElement.disabled ? closeButton.focus() : questionElement.focus();
   }
 }

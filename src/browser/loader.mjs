@@ -15,6 +15,8 @@ const lotusIconMarkup = /** @type {typeof globalThis & {__SMGEN_ASSISTANT_LOTUS_
   const expectedOrigin = assetBase.origin;
   const openStorageKey = `smgen-assistant:open:${assetBase.pathname}`;
   const sizeStorageKey = `smgen-assistant:size:${assetBase.pathname}`;
+  const messageChannelId = globalThis.crypto?.randomUUID?.()
+    ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
   const minimumWidth = 320;
   const minimumHeight = 360;
   const defaultSize = { width: 400, height: 624 };
@@ -103,8 +105,8 @@ const lotusIconMarkup = /** @type {typeof globalThis & {__SMGEN_ASSISTANT_LOTUS_
 
   const style = document.createElement("style");
   style.textContent = `
-.smgen-assistant-launcher{--smgen-lotus-fill:#fff;position:fixed;right:1rem;bottom:1rem;z-index:2147483000;display:grid;place-items:center;width:3.25rem;height:3.25rem;padding:.42rem;border:1px solid #b9c4d0;border-radius:50%;background:#fff;color:#111923;box-shadow:0 5px 22px #0005;cursor:pointer}
-.smgen-assistant-launcher[data-theme=dark]{--smgen-lotus-fill:#111923;border-color:#344354;background:#111923;color:#fff}
+.smgen-assistant-launcher{--smgen-lotus-fill:#fff;position:fixed;right:1rem;bottom:1rem;z-index:2147483000;display:grid;place-items:center;width:3.25rem;height:3.25rem;padding:.42rem;border:1px solid #111923;border-radius:50%;background:#111923;color:#fff;box-shadow:0 5px 22px #0005;cursor:pointer}
+.smgen-assistant-launcher[data-theme=dark]{--smgen-lotus-fill:#111923;border-color:#fff;background:#fff;color:#111923}
 .smgen-assistant-launcher[hidden]{display:none}
 .smgen-assistant-launcher-icon{display:block;width:2.35rem;height:auto;overflow:visible;pointer-events:none}
 .smgen-lotus-petal{transform:rotate(0deg);transform-box:view-box;transform-origin:72px 104px}
@@ -175,6 +177,7 @@ const lotusIconMarkup = /** @type {typeof globalThis & {__SMGEN_ASSISTANT_LOTUS_
   /** Send current host page details to the isolated frame. */
   const sendContext = () => frame?.contentWindow?.postMessage({
     type: "smgen-assistant:context",
+    channelId: messageChannelId,
     url: location.href,
     title: document.title
   }, expectedOrigin);
@@ -182,6 +185,7 @@ const lotusIconMarkup = /** @type {typeof globalThis & {__SMGEN_ASSISTANT_LOTUS_
   /** Tell the frame whether its maximize button should restore or expand. */
   const sendLayout = () => frame?.contentWindow?.postMessage({
     type: "smgen-assistant:layout",
+    channelId: messageChannelId,
     maximized
   }, expectedOrigin);
 
@@ -192,6 +196,7 @@ const lotusIconMarkup = /** @type {typeof globalThis & {__SMGEN_ASSISTANT_LOTUS_
     if (shell) shell.dataset.theme = theme;
     frame?.contentWindow?.postMessage({
       type: "smgen-assistant:theme",
+      channelId: messageChannelId,
       theme
     }, expectedOrigin);
   };
@@ -335,7 +340,10 @@ const lotusIconMarkup = /** @type {typeof globalThis & {__SMGEN_ASSISTANT_LOTUS_
     if (!maximized) applySize();
   });
   window.addEventListener("message", (event) => {
-    if (event.origin !== expectedOrigin || event.source !== frame?.contentWindow || typeof event.data !== "object" || event.data === null) return;
+    if (event.origin !== expectedOrigin || typeof event.data !== "object" || event.data === null) return;
+    const sourceMatches = event.source === frame?.contentWindow;
+    const channelMatches = event.data.channelId === messageChannelId;
+    if (!sourceMatches && !channelMatches) return;
     if (event.data.type === "smgen-assistant:ready") {
       sendContext();
       sendLayout();
