@@ -51,10 +51,10 @@ menus:
 
 # smgen-assistant
 
-smgen-assistant adds a local documentation assistant to an SMGen site. It
-builds a static search corpus from the site's Markdown and runs WebLLM in the
-visitor's browser. Questions, retrieved passages, and generated answers remain
-on that device.
+smgen-assistant adds a local documentation assistant to an
+[SMGen](https://seanmorris.github.io/smgen/) site. It builds a static search
+corpus from the site's Markdown and runs WebLLM in the visitor's browser.
+Questions, retrieved passages, and generated answers remain on that device.
 
 The published site does not need an application server. It serves HTML, the
 assistant bundle, the documentation corpus, and a small configuration file as
@@ -62,8 +62,10 @@ static assets.
 
 ## Requirements
 
-The build requires Node.js 20 or newer and an existing SMGen site. Visitors
-need a browser with WebGPU and enough memory for at least one configured model.
+The build requires Node.js 20 or newer and an existing SMGen site. See the
+[SMGen installation guide](https://seanmorris.github.io/smgen/index.html) to
+create one. Visitors need a browser with WebGPU and enough memory for at least
+one configured model.
 
 Install the package in the site project:
 

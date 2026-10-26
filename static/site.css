@@ -144,6 +144,21 @@ a.logo .tagline-text {
 	opacity: 0.72;
 }
 
+.links a.smgen-link {
+	display: inline-flex;
+	width: auto;
+	align-items: center;
+	color: var(--muted);
+	font-size: 0.76rem;
+	font-weight: 680;
+	line-height: 1;
+	text-decoration: none;
+}
+
+.links a.smgen-link:hover {
+	color: var(--link-hover);
+}
+
 .links a:hover,
 .links button:hover {
 	opacity: 1;

@@ -1,6 +1,6 @@
 # smgen-assistant
 
-smgen-assistant adds a local AI documentation assistant to an [SMGen](https://github.com/seanmorris/smgen) site. It builds a static search corpus from the site's Markdown and runs [WebLLM](https://github.com/mlc-ai/web-llm) in the visitor's browser.
+smgen-assistant adds a local AI documentation assistant to an [SMGen](https://seanmorris.github.io/smgen/) site. It builds a static search corpus from the site's Markdown and runs [WebLLM](https://github.com/mlc-ai/web-llm) in the visitor's browser.
 
 The [hosted documentation](https://seanmorris.github.io/smgen-assistant/) covers installation, configuration, content preparation, browser behavior, deployment, and development.
 
