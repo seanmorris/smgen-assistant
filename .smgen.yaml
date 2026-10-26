@@ -19,6 +19,14 @@ BODY_SCRIPTS:
   - /__smgen-assistant/loader.js
 
 SEARCH_ENABLED: 0
+SMGEN_ENGINE: php
+
+PLUGINS:
+  - use: ./smgen.plugin.yaml
+    options:
+      config: .smgen-assistant.yaml
+    watch:
+      - .smgen-assistant.yaml
 
 LLMS:
   title: smgen-assistant
