@@ -138,22 +138,64 @@ function firstHeading(markdown, fallback) {
 }
 
 /**
+ * Replace a terminal index.html path segment with its public directory route.
+ *
+ * @param {string} url
+ */
+function cleanDirectoryUrl(url) {
+  const match = url.match(/^([^?#]*)([?#].*)?$/u);
+  const pathname = match?.[1] ?? url;
+  const suffix = match?.[2] ?? "";
+  if (pathname === "index.html") return `./${suffix}`;
+  if (pathname.endsWith("/index.html")) return `${pathname.slice(0, -"index.html".length)}${suffix}`;
+  return url;
+}
+
+/**
+ * Read SMGen's page manifest and map canonical sources to physical outputs.
+ *
+ * @param {string | undefined} filename
+ * @returns {Promise<Map<string, string> | undefined>}
+ */
+async function readPageOutputs(filename) {
+  if (!filename) return undefined;
+  const outputs = new Map();
+  for (const line of (await readFile(filename, "utf8")).replace(/\r\n?/gu, "\n").split("\n")) {
+    if (!line) continue;
+    const separator = line.indexOf("\t");
+    if (separator < 1 || separator === line.length - 1) throw new Error(`invalid SMGen page manifest entry: ${line}`);
+    const output = line.slice(0, separator).replace(/\\/gu, "/");
+    const source = await realpath(line.slice(separator + 1));
+    if (output.startsWith("/") || output.split("/").some((part) => part === "" || part === "." || part === "..")) {
+      throw new Error(`invalid SMGen page output: ${output}`);
+    }
+    if (outputs.has(source)) throw new Error(`duplicate SMGen page manifest source: ${source}`);
+    outputs.set(source, output);
+  }
+  return outputs;
+}
+
+/**
  * Map an SMGen source path or explicit override to its public page URL.
  *
  * @param {string} baseUrl
  * @param {string} relative
  * @param {Record<string, unknown>} metadata
+ * @param {string | undefined} outputPath
  */
-function pageUrl(baseUrl, relative, metadata) {
+function pageUrl(baseUrl, relative, metadata, outputPath) {
   const explicit = metadata.assistantUrl ?? metadata.url;
   if (typeof explicit === "string" && explicit.trim()) {
     if (/^[a-z][a-z\d+.-]*:\/\//iu.test(explicit)) return explicit;
     const [pathname, fragment] = explicit.split("#", 2);
     const encodedPath = `/${(pathname ?? "").split("/").filter(Boolean).map(encodeURIComponent).join("/")}`;
-    return fragment ? `${encodedPath}#${encodeURIComponent(fragment)}` : encodedPath;
+    return cleanDirectoryUrl(fragment ? `${encodedPath}#${encodeURIComponent(fragment)}` : encodedPath);
   }
-  const htmlPath = relative.replace(/\.md$/iu, ".html").split(path.sep).map(encodeURIComponent).join("/");
-  return `${baseUrl}/${htmlPath}`.replace(/\/{2,}/gu, "/");
+  const htmlPath = (outputPath ?? relative.replace(/\.md$/iu, ".html"))
+    .split(/[\\/]/u)
+    .map(encodeURIComponent)
+    .join("/");
+  return cleanDirectoryUrl(`${baseUrl}/${htmlPath}`.replace(/\/{2,}/gu, "/"));
 }
 
 /**
@@ -246,7 +288,7 @@ function sectionUrl(url, fragment) {
  * Convert all eligible Markdown pages into deterministic sources and chunks.
  *
  * @param {string} pagesDirectory
- * @param {{baseUrl: string, chunkCharacters: number, renderedDirectory?: string}} options
+ * @param {{baseUrl: string, chunkCharacters: number, renderedDirectory?: string, pageManifest?: string}} options
  * @returns {Promise<Corpus>}
  */
 export async function buildCorpus(pagesDirectory, options) {
@@ -257,8 +299,11 @@ export async function buildCorpus(pagesDirectory, options) {
   const sources = [];
   /** @type {CorpusChunk[]} */
   const chunks = [];
+  const pageOutputs = await readPageOutputs(options.pageManifest);
 
   for (const filename of await listMarkdown(pagesRoot)) {
+    const canonicalFilename = await realpath(filename);
+    if (pageOutputs && !pageOutputs.has(canonicalFilename)) continue;
     const relative = path.relative(pagesRoot, filename);
     const parsed = parseFrontmatter(await readFile(filename, "utf8"), filename);
     const metadata = { ...(await inheritedMetadata(pagesRoot, path.dirname(filename))), ...parsed.attributes };
@@ -268,13 +313,14 @@ export async function buildCorpus(pagesDirectory, options) {
     const title = typeof titleValue === "string" && titleValue.trim()
       ? titleValue.trim()
       : firstHeading(parsed.markdown, fallback);
-    const url = pageUrl(options.baseUrl, relative, metadata);
+    const outputPath = pageOutputs?.get(canonicalFilename);
+    const url = pageUrl(options.baseUrl, relative, metadata, outputPath);
     const sourceId = stableId(relative.split(path.sep).join("/"));
     sources.push({ id: sourceId, title, url });
     /** @type {Array<string | undefined>} */
     let renderedFragments = [];
     if (options.renderedDirectory) {
-      const renderedFilename = path.join(options.renderedDirectory, relative.replace(/\.md$/iu, ".html"));
+      const renderedFilename = path.join(options.renderedDirectory, outputPath ?? relative.replace(/\.md$/iu, ".html"));
       try {
         renderedFragments = renderedHeadingFragments(parsed.markdown, await readFile(renderedFilename, "utf8"));
       } catch (error) {

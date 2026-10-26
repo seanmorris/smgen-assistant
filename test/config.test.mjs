@@ -124,7 +124,11 @@ test("SMGen finalize context supplies staged build paths", async () => {
       phase: "finalize",
       project: { root: directory },
       plugin: { options: { config: "assistant.yaml" } },
-      paths: { pages: path.join(directory, "pages"), stage: path.join(directory, "stage") },
+      paths: {
+        pages: path.join(directory, "pages"),
+        stage: path.join(directory, "stage"),
+        pageManifest: path.join(directory, "pages.tsv")
+      },
       site: { baseUrl: "/manual" }
     }));
     const parsed = await parseBuildOptions(["build", "--smgen-context"], {
@@ -135,6 +139,7 @@ test("SMGen finalize context supplies staged build paths", async () => {
     assert.equal(parsed.config.pages, path.join(directory, "pages"));
     assert.equal(parsed.config.output, path.join(directory, "stage"));
     assert.equal(parsed.config.baseUrl, "/manual");
+    assert.equal(parsed.config.pageManifest, path.join(directory, "pages.tsv"));
     assert.equal(parsed.config.publicConfig.title, "Plugin assistant");
   } finally {
     await rm(directory, { recursive: true, force: true });

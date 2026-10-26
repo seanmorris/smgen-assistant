@@ -1,6 +1,6 @@
 {
   "name": "smgen-assistant",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Build a private, in-browser AI assistant for an SMGen site.",
   "keywords": [
     "smgen",

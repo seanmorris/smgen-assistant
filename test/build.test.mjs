@@ -36,7 +36,7 @@ test("build replaces only the reserved assistant directory", async () => {
     const second = await buildSiteAssistant({ pages, output, baseUrl: "/docs", configPath: undefined, chunkCharacters: 4000, publicConfig });
     assert.equal(await readFile(path.join(output, "keep.txt"), "utf8"), "keep\n");
     assert.equal(await readFile(path.join(second.destination, "corpus.json"), "utf8"), firstCorpus);
-    assert.equal(JSON.parse(firstCorpus).sources[0].url, "/docs/index.html");
+    assert.equal(JSON.parse(firstCorpus).sources[0].url, "/docs/");
     const secondConfig = JSON.parse(await readFile(path.join(second.destination, "config.json"), "utf8"));
     assert.match(firstConfig.siteId, /^[a-f\d]{20}$/u);
     assert.match(firstConfig.assetVersion, /^[a-f\d]{20}$/u);

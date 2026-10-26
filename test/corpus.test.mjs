@@ -41,6 +41,49 @@ test("corpus applies inherited metadata and excludes opted-out pages", async () 
   }
 });
 
+test("corpus publishes directory routes without changing similar filenames", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "smgen-assistant-directory-routes-"));
+  try {
+    await mkdir(path.join(root, "games"));
+    await writeFile(path.join(root, "index.md"), "# Home\n");
+    await writeFile(path.join(root, "games", "index.md"), "# Games\n");
+    await writeFile(path.join(root, "api-phonics-spatial-bounds-index.md"), "# API Index\n");
+    const corpus = await buildCorpus(root, { baseUrl: "/manual", chunkCharacters: 4000 });
+    assert.deepEqual(corpus.sources.map((source) => source.url), [
+      "/manual/api-phonics-spatial-bounds-index.html",
+      "/manual/games/",
+      "/manual/"
+    ]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("corpus uses SMGen manifest outputs for generated pages", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "smgen-assistant-generated-routes-"));
+  const output = await mkdtemp(path.join(os.tmpdir(), "smgen-assistant-generated-output-"));
+  try {
+    const generated = path.join(root, ".smgen-generated", "phpdoc", "api", "index.md");
+    const manifest = path.join(root, "pages.tsv");
+    await mkdir(path.dirname(generated), { recursive: true });
+    await mkdir(path.join(output, "api"), { recursive: true });
+    await writeFile(generated, "# Generated API\n\nGenerated reference details.\n");
+    await writeFile(path.join(output, "api", "index.html"), '<h1 id="generated-api">Generated API</h1>\n');
+    await writeFile(manifest, `api/index.html\t${generated}\n`);
+    const corpus = await buildCorpus(root, {
+      baseUrl: "/manual",
+      chunkCharacters: 4000,
+      renderedDirectory: output,
+      pageManifest: manifest
+    });
+    assert.equal(corpus.sources[0]?.url, "/manual/api/");
+    assert.equal(corpus.chunks[0]?.url, "/manual/api/#generated-api");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(output, { recursive: true, force: true });
+  }
+});
+
 test("corpus rejects symlinks instead of following them", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "smgen-assistant-links-"));
   const outside = path.join(root, "..", `${path.basename(root)}-outside.md`);

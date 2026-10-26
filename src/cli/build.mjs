@@ -108,7 +108,8 @@ export async function buildSiteAssistant(config) {
     const corpus = await buildCorpus(pages, {
       baseUrl: config.baseUrl,
       chunkCharacters: config.chunkCharacters,
-      renderedDirectory: output
+      renderedDirectory: output,
+      ...(config.pageManifest ? { pageManifest: config.pageManifest } : {})
     });
     const siteId = contentId({
       baseUrl: config.baseUrl,

@@ -28,6 +28,7 @@ export const DEFAULT_CONFIG = /** @type {const} */ ({
  * @property {string} pages
  * @property {string} output
  * @property {string} baseUrl
+ * @property {string} [pageManifest]
  * @property {string | undefined} configPath
  * @property {number} chunkCharacters
  * @property {PublicAssistantConfig} publicConfig
@@ -238,6 +239,7 @@ async function resolveSmgenContext(argv, environment, cwd) {
   const projectRoot = context?.project?.root;
   const pages = context?.paths?.pages;
   const output = context?.paths?.stage;
+  const pageManifest = context?.paths?.pageManifest;
   const baseUrl = context?.site?.baseUrl;
   const options = objectValue(context?.plugin?.options);
   if (![projectRoot, pages, output, baseUrl].every((value) => typeof value === "string")) {
@@ -245,6 +247,7 @@ async function resolveSmgenContext(argv, environment, cwd) {
   }
   const normalized = argv.filter((argument) => argument !== "--smgen-context");
   normalized.push("--pages", pages, "--output", output, "--base-url", baseUrl);
+  if (typeof pageManifest === "string" && pageManifest) normalized.push("--page-manifest", pageManifest);
   if (options.config !== undefined) {
     if (typeof options.config !== "string" || !options.config.trim()) {
       throw new Error("plugin option config must be a nonempty path");
@@ -275,7 +278,7 @@ export async function parseBuildOptions(argv, environment = process.env, cwd = p
     if (!flag?.startsWith("--")) throw new Error(`unexpected argument: ${flag ?? ""}`);
     const value = argv[index + 1];
     if (value === undefined || value.startsWith("--")) throw new Error(`${flag} requires a value`);
-    if (!["--pages", "--output", "--base-url", "--config"].includes(flag)) {
+    if (!["--pages", "--output", "--base-url", "--config", "--page-manifest"].includes(flag)) {
       throw new Error(`unknown option: ${flag}`);
     }
     if (flag !== "--base-url" && !value) throw new Error(`${flag} requires a nonempty value`);
@@ -298,6 +301,7 @@ export async function parseBuildOptions(argv, environment = process.env, cwd = p
   const pagesValue = flags["--pages"] ?? fileConfig.pages ?? "./pages";
   const outputValue = flags["--output"] ?? fileConfig.output ?? "./docs";
   const baseUrlValue = flags["--base-url"] ?? fileConfig.baseUrl ?? environment.BASE_URL ?? "";
+  const pageManifestValue = flags["--page-manifest"];
   if (typeof pagesValue !== "string" || !pagesValue.trim()) throw new Error("pages must be a nonempty path");
   if (typeof outputValue !== "string" || !outputValue.trim()) throw new Error("output must be a nonempty path");
   if (typeof baseUrlValue !== "string") throw new Error("baseUrl must be a string");
@@ -308,6 +312,7 @@ export async function parseBuildOptions(argv, environment = process.env, cwd = p
       pages: path.resolve(cwd, pagesValue),
       output: path.resolve(cwd, outputValue),
       baseUrl: normalizeBaseUrl(baseUrlValue),
+      ...(pageManifestValue ? { pageManifest: path.resolve(cwd, pageManifestValue) } : {}),
       configPath,
       chunkCharacters: optionalPositiveInteger(fileConfig.chunkCharacters, "chunkCharacters", DEFAULT_CONFIG.chunkCharacters),
       publicConfig: {
