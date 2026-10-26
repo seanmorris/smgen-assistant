@@ -102,6 +102,10 @@ When the Device Memory API does not report a tier, the browser prefers a
 compatible model without `minDeviceMemoryGB`. Models with a memory floor remain
 selectable because the browser lacks evidence to reject them.
 
+Browsers may clamp high-memory devices to a lower reported tier for privacy.
+Keep the floor at or below the tiers reported by the browsers you support. The
+value cannot measure free system or GPU memory.
+
 Use `model` instead of `models` for one choice:
 
 ```yaml

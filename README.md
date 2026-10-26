@@ -148,10 +148,11 @@ WebGPU features, `minStorageBufferMB` for a larger storage buffer binding, and
 ```
 
 The browser reports approximate system memory when it supports the Device
-Memory API. A model above a reported memory tier is unavailable. When the
-browser does not report memory, models with `minDeviceMemoryGB` remain
-selectable. The browser recommends a compatible model without a memory tier
-when one is available.
+Memory API. Browsers may clamp high-memory devices to a lower tier for privacy,
+so a floor above that clamp can hide a model from capable hardware. A model
+above the reported tier is unavailable. When the browser does not report
+memory, models with `minDeviceMemoryGB` remain selectable. The browser
+recommends a compatible model without a memory tier when one is available.
 
 Changing the choice releases the active engine and defers the new download
 until the next question. The choice persists for that assistant URL, and
