@@ -62,5 +62,6 @@ await build({
 await Promise.all([
   cp(path.join(root, "src/browser/frame.html"), path.join(output, "browser/frame.html")),
   cp(path.join(root, "src/styles/assistant.css"), path.join(output, "browser/assistant.css")),
+  cp(path.join(root, "src/browser/logo.svg"), path.join(output, "browser/logo.svg")),
   cp(path.join(root, "src/browser/lotus.svg"), path.join(output, "browser/lotus.svg"))
 ]);

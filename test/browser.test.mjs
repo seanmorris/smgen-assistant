@@ -371,6 +371,13 @@ test("the composer shares one action slot and keeps the model picker in its foot
   assert.match(frameSource, /submitButton\.hidden = Boolean\(generation\);\s*cancelButton\.hidden = !generation;/u);
 });
 
+test("the composer footer links the packaged assistant logo to the project site", async () => {
+  const css = await readFile(new URL("../src/styles/assistant.css", import.meta.url), "utf8");
+  const frameHtml = await readFile(new URL("../src/browser/frame.html", import.meta.url), "utf8");
+  assert.match(frameHtml, /<div class="composer-footer">\s*<a class="assistant-brand" href="https:\/\/seanmorris\.github\.io\/smgen-assistant\/" target="_blank" rel="noopener noreferrer"[^>]*>\s*<img src="logo\.svg"/u);
+  assert.match(css, /\.assistant-brand img\s*\{[^}]*height:\s*1\.1rem;[^}]*width:\s*1\.1rem/su);
+});
+
 test("prompt counting uses the loaded tokenizer and conversation template", () => {
   class FakeConversation {
     /** @param {unknown} config */

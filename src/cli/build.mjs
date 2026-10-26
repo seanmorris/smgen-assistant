@@ -61,6 +61,7 @@ function versionFrameAssets(html, assetVersion) {
   const query = `?v=${encodeURIComponent(assetVersion)}`;
   return html
     .replace('href="assistant.css"', `href="assistant.css${query}"`)
+    .replace('src="logo.svg"', `src="logo.svg${query}"`)
     .replace('src="frame.js"', `src="frame.js${query}"`);
 }
 

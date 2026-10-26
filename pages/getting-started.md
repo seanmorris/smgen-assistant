@@ -131,6 +131,7 @@ docs/
     ├── frame.html
     ├── frame.js
     ├── loader.js
+    ├── logo.svg
     ├── lotus.svg
     ├── service-worker.js
     └── chunks/

@@ -85,6 +85,8 @@ main.assistant { display: grid; grid-template-rows: auto 1fr auto; height: 100%;
 .composer button { background: var(--accent); border: 0; border-radius: .35rem; color: var(--accent-text); font-weight: 700; min-height: 2.35rem; padding: .5rem .8rem; }
 .composer .secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
 .composer-footer { align-items: center; background: var(--raised); border-top: 1px solid var(--border); color: var(--muted); display: flex; font-size: .72rem; gap: .55rem; min-height: 2rem; min-width: 0; padding: .28rem .65rem .32rem .8rem; }
+.assistant-brand { border-radius: .2rem; display: block; flex: none; }
+.assistant-brand img { display: block; height: 1.1rem; width: 1.1rem; }
 .model-choice { align-items: center; display: flex; flex: 1 1 auto; gap: .35rem; min-width: 0; }
 .model-choice[hidden] { display: none; }
 .model-choice label { flex: none; font-weight: 700; }

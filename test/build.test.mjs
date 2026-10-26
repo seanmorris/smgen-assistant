@@ -44,8 +44,10 @@ test("build replaces only the reserved assistant directory", async () => {
     assert.equal(secondConfig.assetVersion, firstConfig.assetVersion);
     const frameHtml = await readFile(path.join(second.destination, "frame.html"), "utf8");
     assert.match(frameHtml, new RegExp(`assistant\\.css\\?v=${firstConfig.assetVersion}`, "u"));
+    assert.match(frameHtml, new RegExp(`logo\\.svg\\?v=${firstConfig.assetVersion}`, "u"));
     assert.match(frameHtml, new RegExp(`frame\\.js\\?v=${firstConfig.assetVersion}`, "u"));
     assert.match(await readFile(path.join(second.destination, "loader.js"), "utf8"), /frame\.html/u);
+    assert.match(await readFile(path.join(second.destination, "logo.svg"), "utf8"), /fill="#2387df"/u);
     assert.match(await readFile(path.join(second.destination, "lotus.svg"), "utf8"), /Creative Commons Attribution 4\.0/u);
     assert.equal((await stat(second.destination)).mode & 0o777, 0o755);
   } finally {

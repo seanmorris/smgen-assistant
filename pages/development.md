@@ -49,6 +49,7 @@ The build produces:
 - `dist/browser/engine-worker.js`: WebLLM worker entry
 - `dist/browser/chunks/`: shared runtime chunks
 - `dist/browser/assistant.css`: frame styles
+- `dist/browser/logo.svg`: footer project mark
 - `dist/browser/lotus.svg`: attributed launcher source
 
 ## Build This Documentation Site
