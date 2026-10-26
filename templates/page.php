@@ -37,7 +37,7 @@ $if(canonical)$
 $endif$
 	<meta name="title" content="$if(pagetitle)$${pagetitle}$else$${title}$endif$">
 <?php renderJsonLd($frontmatter, $pageFile); ?>
-	<link rel="icon" type="image/png" sizes="32x32" href="<?=escapeHtml(resolveAssetUrl('/favicon-32.png'))?>">
+	<link rel="icon" type="image/png" sizes="16x16" href="<?=escapeHtml(resolveAssetUrl('/icon-16.png'))?>">
 	<link rel="sitemap" href="<?=escapeHtml(resolveAssetUrl('/sitemap.xml'))?>" />
 <?php if(llmsEnabled()): ?>
 	<link rel="describedby" type="text/markdown" href="<?=escapeHtml(resolveAssetUrl('/llms.txt'))?>" />
