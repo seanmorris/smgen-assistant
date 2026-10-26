@@ -90,6 +90,8 @@ main.assistant { display: grid; grid-template-rows: auto 1fr auto; height: 100%;
 .model-choice label { flex: none; font-weight: 700; }
 .model-choice select { background: transparent; border: 0; color: inherit; font-size: inherit; min-width: 0; padding: .1rem 1.35rem .1rem .15rem; text-overflow: ellipsis; width: 100%; }
 .model-choice select:focus { color: var(--text); }
+.model-choice option { background: var(--surface); color: var(--text); }
+.model-choice option:disabled { color: var(--muted); }
 #model-note { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .model-choice:not([hidden]) + #model-note { display: none; }
 #character-count { flex: none; }

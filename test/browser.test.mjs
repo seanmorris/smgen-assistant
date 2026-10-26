@@ -350,6 +350,8 @@ test("the composer shares one action slot and keeps the model picker in its foot
   assert.match(css, /\.actions\s*\{[^}]*align-self:\s*center/su);
   assert.match(css, /\.composer \.actions button\s*\{[^}]*grid-area:\s*action[^}]*height:\s*3rem[^}]*width:\s*3rem/su);
   assert.match(css, /\.model-choice select:focus\s*\{[^}]*color:\s*var\(--text\)/su);
+  assert.match(css, /\.model-choice option\s*\{[^}]*background:\s*var\(--surface\)[^}]*color:\s*var\(--text\)/su);
+  assert.match(css, /\.model-choice option:disabled\s*\{[^}]*color:\s*var\(--muted\)/su);
   assert.match(frameSource, /submitButton\.hidden = Boolean\(generation\);\s*cancelButton\.hidden = !generation;/u);
 });
 
