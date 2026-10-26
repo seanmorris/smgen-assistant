@@ -25,19 +25,21 @@
     <p id="live-status" class="visually-hidden" role="status" aria-live="polite"></p>
 
     <form id="question-form" class="composer">
-      <div id="model-choice" class="model-choice" hidden>
-        <label for="model-select">Model</label>
-        <select id="model-select"></select>
+      <div class="composer-input">
+        <label class="visually-hidden" for="question">Question about this site</label>
+        <textarea id="question" rows="3" maxlength="2000" required disabled placeholder="Ask about this site"></textarea>
+        <div class="actions">
+          <button id="submit" type="submit" disabled>Ask</button>
+          <button id="cancel" class="secondary" type="button" hidden>Stop</button>
+        </div>
       </div>
-      <label class="visually-hidden" for="question">Question about this site</label>
-      <textarea id="question" rows="2" maxlength="2000" required disabled placeholder="Ask about this site"></textarea>
-      <div class="composer-meta">
+      <div class="composer-footer">
+        <div id="model-choice" class="model-choice" hidden>
+          <label for="model-select">Model</label>
+          <select id="model-select"></select>
+        </div>
         <span id="model-note">The model starts with your first question.</span>
         <span id="character-count">0 / 2000</span>
-      </div>
-      <div class="actions">
-        <button id="submit" type="submit" disabled>Ask</button>
-        <button id="cancel" class="secondary" type="button" hidden>Stop</button>
       </div>
     </form>
   </main>

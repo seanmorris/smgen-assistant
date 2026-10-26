@@ -338,6 +338,21 @@ test("multiple configured models use a persistent deferred picker", async () => 
   assert.match(frameSource, /model: selectedModel/u);
 });
 
+test("the composer shares one action slot and keeps the model picker in its footer", async () => {
+  const css = await readFile(new URL("../src/styles/assistant.css", import.meta.url), "utf8");
+  const frameSource = await readFile(new URL("../src/browser/frame.mjs", import.meta.url), "utf8");
+  const frameHtml = await readFile(new URL("../src/browser/frame.html", import.meta.url), "utf8");
+  assert.match(frameHtml, /<div class="composer-input">[\s\S]*<textarea[^>]+>[\s\S]*<div class="actions">[\s\S]*id="submit"[\s\S]*id="cancel"[\s\S]*<div class="composer-footer">[\s\S]*id="model-choice"/u);
+  assert.match(css, /\.composer-input\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto/su);
+  assert.match(css, /\.composer-input:has\(textarea:focus\)\s*\{[^}]*outline:\s*3px solid var\(--accent\)/su);
+  assert.match(css, /\.composer textarea:focus-visible\s*\{[^}]*outline:\s*0/su);
+  assert.match(css, /\.composer textarea\s*\{[^}]*resize:\s*none/su);
+  assert.match(css, /\.actions\s*\{[^}]*align-self:\s*center/su);
+  assert.match(css, /\.composer \.actions button\s*\{[^}]*grid-area:\s*action[^}]*height:\s*3rem[^}]*width:\s*3rem/su);
+  assert.match(css, /\.model-choice select:focus\s*\{[^}]*color:\s*var\(--text\)/su);
+  assert.match(frameSource, /submitButton\.hidden = Boolean\(generation\);\s*cancelButton\.hidden = !generation;/u);
+});
+
 test("prompt counting uses the loaded tokenizer and conversation template", () => {
   class FakeConversation {
     /** @param {unknown} config */

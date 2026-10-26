@@ -266,6 +266,7 @@ function setWorking(working) {
   questionElement.disabled = working || !config || !gpuAdapter || !selectedModel;
   submitButton.disabled = working || !config || !gpuAdapter || !selectedModel;
   modelSelectElement.disabled = working || !config || !gpuAdapter || !selectedModel;
+  submitButton.hidden = Boolean(generation);
   cancelButton.hidden = !generation;
 }
 
