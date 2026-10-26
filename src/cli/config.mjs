@@ -220,6 +220,41 @@ async function readConfigFile(filename) {
 }
 
 /**
+ * Read SMGen's trusted finalize-hook context and turn it into normal build flags.
+ *
+ * @param {string[]} argv
+ * @param {NodeJS.ProcessEnv} environment
+ * @param {string} cwd
+ * @returns {Promise<{argv: string[], cwd: string}>}
+ */
+async function resolveSmgenContext(argv, environment, cwd) {
+  if (!argv.includes("--smgen-context")) return { argv, cwd };
+  const contextPath = environment.SMGEN_PLUGIN_CONTEXT;
+  if (!contextPath) throw new Error("--smgen-context requires SMGEN_PLUGIN_CONTEXT");
+  const context = JSON.parse(await readFile(contextPath, "utf8"));
+  if (context?.apiVersion !== "smgen/v1" || context?.phase !== "finalize") {
+    throw new Error("SMGEN_PLUGIN_CONTEXT must describe an smgen/v1 finalize hook");
+  }
+  const projectRoot = context?.project?.root;
+  const pages = context?.paths?.pages;
+  const output = context?.paths?.stage;
+  const baseUrl = context?.site?.baseUrl;
+  const options = objectValue(context?.plugin?.options);
+  if (![projectRoot, pages, output, baseUrl].every((value) => typeof value === "string")) {
+    throw new Error("SMGEN_PLUGIN_CONTEXT is missing project, page, stage, or URL paths");
+  }
+  const normalized = argv.filter((argument) => argument !== "--smgen-context");
+  normalized.push("--pages", pages, "--output", output, "--base-url", baseUrl);
+  if (options.config !== undefined) {
+    if (typeof options.config !== "string" || !options.config.trim()) {
+      throw new Error("plugin option config must be a nonempty path");
+    }
+    normalized.push("--config", options.config);
+  }
+  return { argv: normalized, cwd: projectRoot };
+}
+
+/**
  * Resolve command-line, YAML, environment, and default build settings.
  *
  * @param {string[]} argv
@@ -228,6 +263,7 @@ async function readConfigFile(filename) {
  * @returns {Promise<{help: true} | {help: false, config: BuildConfig}>}
  */
 export async function parseBuildOptions(argv, environment = process.env, cwd = process.cwd()) {
+  ({ argv, cwd } = await resolveSmgenContext(argv, environment, cwd));
   if (argv.length === 0 || argv.includes("--help") || argv.includes("-h")) return { help: true };
   const command = argv[0];
   if (command !== "build") throw new Error(`unknown command: ${command ?? ""}`);

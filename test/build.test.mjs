@@ -130,6 +130,7 @@ test("packed package installs a buildable CLI without a second WebLLM tree", asy
     const result = await execFileAsync(bin, ["build", "--pages", pages, "--output", output]);
     assert.match(result.stdout, /Built 1 pages and 1 chunks/u);
     assert.equal(JSON.parse(await readFile(path.join(output, "__smgen-assistant", "corpus.json"), "utf8")).sources.length, 1);
+    assert.match(await readFile(path.join(consumer, "node_modules", "smgen-assistant", "smgen.plugin.yaml"), "utf8"), /apiVersion: smgen\/v1/u);
     await assert.rejects(stat(path.join(consumer, "node_modules", "@mlc-ai")), { code: "ENOENT" });
     await assert.rejects(stat(path.join(consumer, "node_modules", "smgen-assistant", "eval")), { code: "ENOENT" });
   } finally {

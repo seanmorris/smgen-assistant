@@ -75,30 +75,23 @@ npm install --save-dev smgen-assistant
 
 ## Add the Assistant
 
-Add the deferred loader to `.smgen.yaml`:
+Activate the installed plugin in `.smgen.yaml`:
 
 ```yaml
-BODY_SCRIPTS:
-  - /__smgen-assistant/loader.js
+PLUGINS:
+  - use: smgen-assistant
+    options:
+      config: .smgen-assistant.yaml
+    watch:
+      - .smgen-assistant.yaml
 ```
 
-Create `after-smgen.sh` so every SMGen build regenerates the corpus and browser
-assets:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-npx --no-install smgen-assistant build \
-  --pages "${PAGES_DIR}" \
-  --output "${OUTPUT_DIR}" \
-  --base-url "${BASE_URL}"
-```
+The plugin inserts the deferred loader and builds the corpus inside SMGen's
+staged output.
 
 Build and serve the site:
 
 ```bash
-chmod +x after-smgen.sh
 smgen build
 smgen serve
 ```

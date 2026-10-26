@@ -113,3 +113,30 @@ test("an explicit empty base URL overrides the environment for a root site", asy
   assert.equal(parsed.help, false);
   if (!parsed.help) assert.equal(parsed.config.baseUrl, "");
 });
+
+test("SMGen finalize context supplies staged build paths", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "smgen-assistant-plugin-"));
+  try {
+    const contextPath = path.join(directory, "context.json");
+    await writeFile(path.join(directory, "assistant.yaml"), "title: Plugin assistant\n");
+    await writeFile(contextPath, JSON.stringify({
+      apiVersion: "smgen/v1",
+      phase: "finalize",
+      project: { root: directory },
+      plugin: { options: { config: "assistant.yaml" } },
+      paths: { pages: path.join(directory, "pages"), stage: path.join(directory, "stage") },
+      site: { baseUrl: "/manual" }
+    }));
+    const parsed = await parseBuildOptions(["build", "--smgen-context"], {
+      SMGEN_PLUGIN_CONTEXT: contextPath
+    }, "/ignored");
+    assert.equal(parsed.help, false);
+    if (parsed.help) return;
+    assert.equal(parsed.config.pages, path.join(directory, "pages"));
+    assert.equal(parsed.config.output, path.join(directory, "stage"));
+    assert.equal(parsed.config.baseUrl, "/manual");
+    assert.equal(parsed.config.publicConfig.title, "Plugin assistant");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});

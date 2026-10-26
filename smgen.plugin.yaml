@@ -1,0 +1,14 @@
+apiVersion: smgen/v1
+id: smgen-assistant
+pages:
+  selectors:
+    - include: ['**/*']
+  scripts:
+    body:
+      - /__smgen-assistant/loader.js
+hooks:
+  finalize:
+    run: [node, ./bin/smgen-assistant.mjs, build, --smgen-context]
+watch:
+  - dist
+  - smgen.plugin.yaml

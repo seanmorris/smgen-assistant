@@ -67,8 +67,9 @@ system installation so an older global command cannot render the templates.
 Set `SMGEN_BIN` when the checkout lives elsewhere.
 
 Use `npm run site` for a single build. Both commands compile the package, then
-invoke SMGen. SMGen calls `after-smgen.sh`, which builds the assistant from the
-rendered pages and places it under `docs/__smgen-assistant/`.
+invoke SMGen. The package manifest registers a finalize hook that builds the
+assistant from the rendered pages and places it under
+`docs/__smgen-assistant/`.
 
 ## Evaluate Models
 

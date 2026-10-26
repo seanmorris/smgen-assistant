@@ -22,8 +22,8 @@ Pass the site's final public root through `BASE_URL`:
 BASE_URL=https://example.github.io/project smgen build
 ```
 
-SMGen applies the value to page assets. `after-smgen.sh` passes the same value
-to smgen-assistant, which extracts the path prefix for its generated URLs.
+SMGen applies the value to page assets and includes it in the plugin finalize
+context. smgen-assistant extracts the path prefix for its generated URLs.
 
 An empty development value publishes root-relative URLs:
 
@@ -59,9 +59,9 @@ read-only repository access.
 
 ## Build Atomically
 
-SMGen renders a complete temporary output and replaces `docs/` after every page
-succeeds. It then runs `after-smgen.sh`. If the assistant build fails, SMGen
-restores the prior output.
+SMGen renders a complete temporary output and runs the assistant finalize hook
+after every page succeeds. It replaces `docs/` only after the assistant build
+finishes. A failure leaves the prior output in place.
 
 smgen-assistant also stages `docs/__smgen-assistant/` before replacing its old
 copy. A failed corpus or asset build cannot leave a partial assistant directory.

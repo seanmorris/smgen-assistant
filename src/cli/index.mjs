@@ -13,6 +13,7 @@ Options:
   --output <directory>  Generated site directory (default: ./docs)
   --base-url <path>     Site path prefix, such as /docs
   --config <file>       YAML configuration file
+  --smgen-context       Read paths from SMGen's finalize-hook context
   -h, --help            Show this help
 `;
 

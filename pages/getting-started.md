@@ -40,38 +40,43 @@ Confirm that the local executable is available:
 npx --no-install smgen-assistant --help
 ```
 
-## Load the Launcher
+## Activate the Plugin
 
-Add the loader path to `BODY_SCRIPTS` in `.smgen.yaml`:
+Add the installed package to `PLUGINS` in `.smgen.yaml`:
+
+```yaml
+PLUGINS:
+  - use: smgen-assistant
+    options:
+      config: .smgen-assistant.yaml
+    watch:
+      - .smgen-assistant.yaml
+```
+
+The plugin inserts `/__smgen-assistant/loader.js` on selected pages. SMGen
+applies `BASE_URL` to that path. A project hosted at
+`https://example.github.io/manual/` therefore requests
+`/manual/__smgen-assistant/loader.js`.
+
+The finalize hook builds the corpus and browser assets inside staged output. If
+the assistant build fails, SMGen keeps the prior site. The `watch` entry makes
+changes to `.smgen-assistant.yaml` trigger a rebuild.
+
+Use SMGen's page selectors or `plugins: {smgen-assistant: false}` in page and
+directory frontmatter when the launcher should appear on only part of a site.
+
+## Keep a Bash Compatibility Hook
+
+Sites that set `SMGEN_ENGINE=bash` can keep the earlier integration. Add the
+loader to `BODY_SCRIPTS` and create `after-smgen.sh`:
 
 ```yaml
 BODY_SCRIPTS:
   - /__smgen-assistant/loader.js
 ```
 
-SMGen applies `BASE_URL` when it writes this script URL. A project hosted at
-`https://example.github.io/manual/` therefore requests
-`/manual/__smgen-assistant/loader.js`.
-
-Give each project a stable name when several development sites reuse the same
-origin and assistant path:
-
-```yaml
-BODY_SCRIPTS:
-  - /__smgen-assistant/loader.js?site=manual
-```
-
-The name separates saved conversations and prevents an older loader URL from
-another project from carrying into the page. A normal deployment can omit it.
-The generated configuration also derives a site identity from the corpus.
-
-## Add the Build Hook
-
-Create `after-smgen.sh` in the project root:
-
 ```bash
 #!/usr/bin/env bash
-
 set -euo pipefail
 
 npx --no-install smgen-assistant build \
@@ -80,14 +85,8 @@ npx --no-install smgen-assistant build \
   --base-url "${BASE_URL}"
 ```
 
-Make the hook executable:
-
-```bash
-chmod +x after-smgen.sh
-```
-
-SMGen runs the hook after it installs a complete staged output. If the
-assistant build fails, SMGen restores the prior output.
+Make the hook executable with `chmod +x after-smgen.sh`. SMGen restores the
+prior output when the hook fails.
 
 ## Build the Site
 
@@ -113,6 +112,7 @@ smgen-assistant build [options]
 --output <directory>  Generated site directory (default: ./docs)
 --base-url <path>     Public path prefix, such as /manual
 --config <file>       YAML configuration file
+--smgen-context       Read paths from SMGen's finalize-hook context
 ```
 
 Command flags override `.smgen-assistant.yaml`. `BASE_URL` supplies the base

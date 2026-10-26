@@ -35,14 +35,23 @@ The command writes only `docs/__smgen-assistant/`. It stages the complete direct
 
 ## SMGen setup
 
-Add the loader to `.smgen.yaml`:
+Activate the installed package in `.smgen.yaml`:
 
 ```yaml
-BODY_SCRIPTS:
-  - /__smgen-assistant/loader.js
+PLUGINS:
+  - use: smgen-assistant
+    options:
+      config: .smgen-assistant.yaml
+    watch:
+      - .smgen-assistant.yaml
 ```
 
-SMGen applies `BASE_URL` to that path when it renders each page. Add `after-smgen.sh` to generate the assistant beside those pages:
+The plugin inserts the loader on selected pages and builds the corpus inside
+SMGen's staged output. A failed assistant build leaves the previous site in
+place. `smgen watch` monitors the manifest, package watch paths, and the project
+configuration listed above.
+
+Sites using the Bash compatibility engine can keep the earlier integration:
 
 ```bash
 #!/usr/bin/env bash
@@ -54,7 +63,8 @@ npx --no-install smgen-assistant build \
   --base-url "${BASE_URL}"
 ```
 
-SMGen restores its prior output when `after-smgen.sh` fails. `smgen watch` also watches the hook and runs it after each rebuild.
+Those sites also add `/__smgen-assistant/loader.js` to `BODY_SCRIPTS`. The
+legacy hook remains supported through SMGen's current major release.
 
 ## Content selection
 
