@@ -104,16 +104,15 @@ section.heading header {
 }
 
 a.logo .col {
-	flex-direction: row;
-	align-items: center;
-	gap: 0.8rem;
+	align-items: flex-start;
+	gap: 0.22rem;
 }
 
 a.logo img.logo-image {
 	flex: 0 0 auto;
 	width: 2rem;
 	height: 2rem;
-	margin: 0 0.05rem 0 0;
+	margin: 0 0.75rem 0 0;
 	object-fit: contain;
 }
 
