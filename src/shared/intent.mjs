@@ -34,7 +34,7 @@ export function questionIntentInstruction(question) {
   const instructions = {
     what: "State the documented identity, behavior, or value.",
     why: "State only the documented reason.",
-    where: "Name the documented location, path, or URL.",
+    where: "Name the documented locations, paths, or URLs that directly answer the question.",
     when: "State the documented time or condition.",
     how: "Give the documented method or actions in order.",
     who: "Name the documented person, role, or actor."

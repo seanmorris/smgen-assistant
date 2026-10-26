@@ -1,5 +1,7 @@
 // @ts-check
 
+import { questionIntents } from "./intent.mjs";
+
 /** @typedef {import('./types.mjs').CorpusChunk} CorpusChunk */
 
 const LOW_VALUE_WORDS = new Set([
@@ -12,15 +14,23 @@ const QUERY_LOW_VALUE_WORDS = new Set([
 const LEADING_ACTION_WORDS = new Set([
   "add", "build", "change", "configure", "copy", "create", "define", "edit", "enable", "generate", "initialize", "install", "link", "open", "place", "publish", "remove", "replace", "run", "select", "serve", "set", "upload", "write"
 ]);
+const QUESTION_ACTION_WORDS = new Set([
+  ...LEADING_ACTION_WORDS,
+  "capture", "deploy", "display", "load", "migrate", "pass"
+]);
 const GROUNDED_EQUIVALENTS = new Map([
+  ["add", ["include", "listen", "load", "put", "register"]],
   ["additional", ["custom"]],
   ["assets", ["css", "javascript", "script", "stylesheet"]],
   ["browser", ["css", "javascript", "script", "stylesheet"]],
   ["create", ["initialize"]],
   ["creating", ["initialize"]],
   ["define", ["register"]],
+  ["deploy", ["publish", "upload"]],
+  ["display", ["output", "receive", "render"]],
   ["folder", ["directory"]],
   ["frontmatter", ["metadata", "yaml"]],
+  ["get", ["capture", "receive", "return", "store"]],
   ["generate", ["generated", "build"]],
   ["initialize", ["init"]],
   ["navigate", ["cd"]],
@@ -113,7 +123,7 @@ export function formatExtractiveAnswer(source, question = "") {
       blocks = [`${blocks[0]} ${items.join("; ")}.`];
       consumed.add(index + 1);
     }
-    for (const block of blocks) {
+    for (const [blockOrder, block] of blocks.entries()) {
       const cleaned = block.replace(/^(?:[-*+]|\d+\.)\s+/u, "").trim();
       const marker = paragraphs[index + 1]?.trim().match(/^SMGEN_CODE_BLOCK_(\d+)$/u);
       const code = marker ? codeBlocks[Number(marker[1])] : undefined;
@@ -134,28 +144,30 @@ export function formatExtractiveAnswer(source, question = "") {
       const expandedBlocks = expanded.length <= 480
         ? [expanded]
         : (cleaned.match(/[^.!?]+[.!?](?:\s|$)/gu)?.map((sentence) => sentence.trim()) ?? []);
-      for (const text of expandedBlocks) {
+      for (const [sentenceOrder, text] of expandedBlocks.entries()) {
         if (text
           && text !== "…"
           && text.length <= 480
           && !/^#{1,6}\s/u.test(text)
+          && !/^\*\*[^*\n]+\*\*$/u.test(text)
           && !/^!\[[^\]]*\]\([^)]*\)$/u.test(text)) {
-          candidates.push({ text, order: index });
+          candidates.push({ text, order: (index * 100) + (blockOrder * 10) + sentenceOrder });
         }
       }
     }
   }
   candidates.sort((a, b) => extractiveScore(b.text, question) - extractiveScore(a.text, question) || a.order - b.order);
-  /** @type {string[]} */
+  /** @type {Array<{text: string, order: number}>} */
   const selected = [];
   let characters = 0;
   for (const candidate of candidates) {
     if (selected.length >= 4) break;
     if (characters + candidate.text.length > 720) continue;
-    selected.push(candidate.text);
+    selected.push(candidate);
     characters += candidate.text.length;
   }
-  return selected.map((block) => `- ${block} [Source 1]`).join("\n");
+  if (questionIntents(question).includes("how")) selected.sort((a, b) => a.order - b.order);
+  return selected.map(({ text }) => `- ${text} [Source 1]`).join("\n");
 }
 
 /**
@@ -167,6 +179,55 @@ export function formatExtractiveAnswer(source, question = "") {
  */
 export function formatExtractiveAnswerSet(sources, question = "") {
   const candidates = sources.slice(0, 4);
+  if (question.trim()) {
+    const groups = candidates.map((source, sourceIndex) => ({
+      source,
+      sourceIndex,
+      items: formatExtractiveAnswer(source, question)
+        .split("\n")
+        .filter(Boolean)
+        .map((bullet, order) => {
+          const text = bullet.replace(/^\s*-\s*/u, "").replace(/\s*\[Source 1\]\s*$/u, "").trim();
+          return { text, source, sourceIndex, order, score: extractiveScore(text, question) };
+        })
+    })).filter(({ items }) => items.length);
+    const bestScore = Math.max(0, ...groups.flatMap(({ items }) => items.map(({ score }) => score)));
+    if (bestScore > 0) {
+      const threshold = Math.max(1, bestScore * 0.45);
+      const eligible = groups.filter(({ items }) => (items[0]?.score ?? 0) >= threshold);
+      const perSource = Math.max(1, Math.floor(4 / Math.max(1, eligible.length)));
+      /** @type {Array<{text: string, source: CorpusChunk, sourceIndex: number, order: number, score: number}>} */
+      const chosen = [];
+      let characters = 0;
+      /**
+       * Add one distinct excerpt when it fits the response budget.
+       *
+       * @param {{text: string, source: CorpusChunk, sourceIndex: number, order: number, score: number}} candidate
+       */
+      const add = (candidate) => {
+        if (chosen.length >= 4) return;
+        if (characters + candidate.text.length > 720) return;
+        if (chosen.some((item) => comparable(item.text).toLocaleLowerCase("en-US") === comparable(candidate.text).toLocaleLowerCase("en-US"))) return;
+        chosen.push(candidate);
+        characters += candidate.text.length;
+      };
+      for (const { items } of eligible) {
+        for (const candidate of items.slice(0, perSource)) add(candidate);
+      }
+      const remaining = eligible.flatMap(({ items }) => items.slice(perSource))
+        .sort((a, b) => b.score - a.score || a.sourceIndex - b.sourceIndex || a.order - b.order);
+      for (const candidate of remaining) {
+        add(candidate);
+      }
+      if (chosen.length) {
+        const selected = [...new Set(chosen.map(({ source }) => source))];
+        return {
+          answer: chosen.map(({ text, source }) => `- ${text} [Source ${selected.indexOf(source) + 1}]`).join("\n"),
+          sources: selected
+        };
+      }
+    }
+  }
   const perSource = Math.max(1, Math.floor(4 / Math.max(1, candidates.length)));
   /** @type {string[]} */
   const bullets = [];
@@ -207,8 +268,41 @@ function technicalLiterals(answer) {
 function literalHasSourceSupport(literal, documentation) {
   const normalized = comparable(literal);
   if (documentation.includes(normalized)) return true;
+  const tag = normalized.match(/^<([a-z][a-z\d-]*)>$/iu)?.[1];
+  if (tag && new RegExp(`<${tag}(?:\\s|>)`, "iu").test(documentation)) return true;
+  const attribute = normalized.match(/^([a-z_:][a-z\d_.:-]*)\s*=\s*(["'])(.*?)\2$/iu);
+  if (attribute) {
+    const name = attribute[1] ?? "";
+    const value = (attribute[3] ?? "").replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+    if (new RegExp(`${name}\\s*=\\s*["']${value}["']`, "iu").test(documentation)) return true;
+  }
+  const call = normalized.match(/^([\p{L}_$][\p{L}\p{N}_.$-]*)\(\)$/u)?.[1];
+  if (call) {
+    const escaped = call.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+    if (new RegExp(`${escaped}\\s*\\(`, "u").test(documentation)) return true;
+  }
   const commands = normalized.split(/\s*(?:&&|;)\s*/u).filter(Boolean);
   return commands.length > 1 && commands.every((command) => documentation.includes(command));
+}
+
+/**
+ * Report whether a literal appears only in documented warnings or prohibitions.
+ *
+ * @param {string} literal
+ * @param {string} documentation
+ */
+function literalHasOnlyNegativeSupport(literal, documentation) {
+  const normalized = comparable(literal);
+  if (!normalized || !documentation.includes(normalized)) return false;
+  const contexts = [];
+  let offset = 0;
+  while ((offset = documentation.indexOf(normalized, offset)) >= 0) {
+    const start = Math.max(0, documentation.lastIndexOf(".", offset) + 1);
+    const ending = documentation.indexOf(".", offset + normalized.length);
+    contexts.push(documentation.slice(start, ending < 0 ? documentation.length : ending + 1));
+    offset += normalized.length;
+  }
+  return contexts.length > 0 && contexts.every((context) => /\b(?:avoid|can fail|cannot|do not|does not|fails?|must not|never|no longer|should not)\b|\bleave\b[^.]{0,80}\boff\b/iu.test(context));
 }
 
 /**
@@ -266,6 +360,7 @@ function extractiveScore(text, question) {
  */
 function validateQuestionCoverage(answer, sources, question) {
   if (!question.trim()) return { ok: true };
+  const directQuestion = question.replace(/^\s*(?:from|in|on|using)\s+[^,?]{1,80},\s*/iu, "");
   const documentation = comparable(sources.map((source) => source.content).join("\n")).toLocaleLowerCase("en-US");
   const normalizedAnswer = comparable(answer).toLocaleLowerCase("en-US");
   const requiredLiterals = technicalLiterals(question).filter((literal) => documentation.includes(comparable(literal).toLocaleLowerCase("en-US")));
@@ -274,15 +369,21 @@ function validateQuestionCoverage(answer, sources, question) {
 
   const sourceTerms = topicTerms(documentation);
   const answerTerms = topicTerms(normalizedAnswer);
-  const relevant = [...topicTerms(question)].filter((term) => term.length > 2
+  const relevant = [...topicTerms(directQuestion)].filter((term) => term.length > 2
     && !QUERY_LOW_VALUE_WORDS.has(term)
     && groundedVariants(term).some((variant) => sourceTerms.has(variant)));
   const unique = [...new Set(relevant)];
   if (!unique.length) return { ok: true };
-  const covered = unique.filter((term) => groundedVariants(term).some((variant) => answerTerms.has(variant)));
-  const minimum = unique.length < 3 ? unique.length : Math.max(2, Math.min(8, Math.ceil(unique.length * 0.7)));
+  const requestedActions = questionIntents(question).includes("how")
+    ? unique.filter((term) => QUESTION_ACTION_WORDS.has(term))
+    : [];
+  const requiredTerms = requestedActions.length ? requestedActions : unique;
+  const covered = requiredTerms.filter((term) => groundedVariants(term).some((variant) => answerTerms.has(variant)));
+  const minimum = requestedActions.length
+    ? requestedActions.length
+    : (requiredTerms.length < 3 ? requiredTerms.length : Math.max(2, Math.min(8, Math.ceil(requiredTerms.length * 0.5))));
   if (covered.length < minimum) {
-    return { ok: false, reason: "incomplete-answer", missing: unique.filter((term) => !covered.includes(term)).slice(0, 4) };
+    return { ok: false, reason: "incomplete-answer", missing: requiredTerms.filter((term) => !covered.includes(term)).slice(0, 4) };
   }
   if (/\b(?:order|precedence|which .*wins?|wins?)\b/iu.test(question)
     && /\b(?:lowest|highest|order|precedence|override|priority|wins?|before|after)\b/iu.test(documentation)
@@ -326,7 +427,9 @@ function generatedSourceScore(text, source) {
   const firstWord = text.toLocaleLowerCase("en-US").match(/[\p{L}\p{N}]+/u)?.[0] ?? "";
   const unsupportedAction = LEADING_ACTION_WORDS.has(firstWord)
     && !groundedVariants(firstWord).some((variant) => sourceWords.has(variant));
-  if (unsupportedAction || supported < Math.min(2, words.length) || ratio < 0.5) return -1;
+  const reversesWarning = (firstWord === "use" || LEADING_ACTION_WORDS.has(firstWord))
+    && literals.some((literal) => literalHasOnlyNegativeSupport(literal, documentation));
+  if (unsupportedAction || reversesWarning || supported < Math.min(2, words.length) || ratio < 0.5) return -1;
   return supported * 10 + ratio;
 }
 
@@ -439,7 +542,7 @@ export function formatGeneratedAnswer(answer, sources, _finishReason, question =
       || normalized.length > 280
       || /^#{1,6}\s/u.test(normalized)
       || /(?:`{3,}|~{3,})/u.test(normalized)
-      || /<\/?[a-z][a-z\d-]*(?:\s[^>]*)?>/iu.test(normalized)) {
+      || /<\/?[a-z][a-z\d-]*(?:\s[^>]*)?>/iu.test(normalized.replace(/`[^`\n]*`/gu, ""))) {
       if (blockIndex === 0) return { ok: false, reason: "unsupported-content" };
       continue;
     }

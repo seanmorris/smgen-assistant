@@ -10,7 +10,7 @@ The initial page loads one small script. It fetches the generated configuration 
 
 The build requires Node.js 20 or newer. Visitors need a browser with WebGPU.
 
-The default model is `Qwen2.5-1.5B-Instruct-q4f32_1-MLC`. Its current estimate is an 880 MB download and 1,889 MB of GPU memory. The f32 build works on WebGPU adapters without the optional `shader-f16` feature. The package pins the WebLLM 0.2.81 runtime used by the WebLLM Chat example. WebLLM stores model artifacts in IndexedDB to avoid Cache API failures on redirected model shards.
+The default model is `Qwen2.5-1.5B-Instruct-q4f32_1-MLC`. Its current estimate is an 880 MB download and 1,889 MB of GPU memory. The f32 build works on WebGPU adapters without the optional `shader-f16` feature. The package pins WebLLM 0.2.86. WebLLM stores model artifacts in IndexedDB to avoid Cache API failures on redirected model shards.
 
 The browser loads a 2,048-token context and reserves 384 tokens for each answer. Before generation, the model's loaded tokenizer verifies that the complete prompt uses no more than 1,664 tokens. The assistant removes old question context, lower-ranked passages, and excess text from the last passage in that order. A question that still does not fit receives an inline validation message without unloading the model.
 
@@ -90,6 +90,12 @@ greeting: Ask a question about this project.
 chunkCharacters: 4000
 
 models:
+  - id: Qwen3.5-9B-q4f16_1-MLC
+    label: Qwen3.5 9B · Strongest
+    downloadMB: 4823
+    memoryMB: 6434
+    minDeviceMemoryGB: 16
+    quality: 40
   - id: Qwen3-8B-q4f16_1-MLC
     label: Qwen3 8B · Large
     downloadMB: 4624
@@ -153,7 +159,7 @@ WebLLM caches each downloaded model separately.
 
 Use `model` with one mapping when the site should offer only one choice. This
 older form remains supported. Model IDs must exist in the model list included
-with WebLLM 0.2.81. Models with `f16` in their quantization name require a
+with WebLLM 0.2.86. Models with `f16` in their quantization name require a
 WebGPU adapter with `shader-f16`. The assistant checks WebLLM's required adapter
 limits before loading a model. WebGPU does not report available VRAM, and the
 Device Memory API does not report free memory. Choose conservative thresholds

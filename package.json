@@ -1,6 +1,6 @@
 {
   "name": "smgen-assistant",
-  "version": "0.1.28",
+  "version": "0.1.29",
   "description": "Build a private, in-browser AI assistant for an SMGen site.",
   "keywords": [
     "smgen",
@@ -47,7 +47,7 @@
     "yaml": "2.9.1"
   },
   "devDependencies": {
-    "@mlc-ai/web-llm": "0.2.81",
+    "@mlc-ai/web-llm": "0.2.86",
     "@types/node": "22.20.5",
     "esbuild": "0.28.2",
     "eslint": "10.13.0",

@@ -25,8 +25,14 @@ retrieval:
   maxCharacters: 3000
 
 models:
+  - id: Qwen3.5-9B-q4f16_1-MLC
+    label: "Qwen3.5 9B: Strongest answers"
+    downloadMB: 4823
+    memoryMB: 6434
+    minDeviceMemoryGB: 16
+    quality: 50
   - id: Qwen3-8B-q4f16_1-MLC
-    label: "Qwen3 8B: Best answers"
+    label: "Qwen3 8B: Faster answers"
     downloadMB: 4624
     memoryMB: 5696
     minDeviceMemoryGB: 16
@@ -60,7 +66,7 @@ above the first question.
 
 Use `models` to offer one or more choices. Each entry accepts:
 
-- `id`: model ID from the model list bundled with WebLLM 0.2.81.
+- `id`: model ID from the model list bundled with WebLLM 0.2.86.
 - `label`: text shown to the visitor.
 - `downloadMB`: displayed download estimate in megabytes.
 - `memoryMB`: displayed GPU memory estimate in megabytes.

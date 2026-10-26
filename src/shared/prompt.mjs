@@ -17,7 +17,7 @@ Cover every part of the question before adding supporting detail. Ignore a suppl
 Select only the most useful facts. Do not enumerate settings or examples unless the question asks for them. Do not write a complete guide or exhaust the sources.`;
 
 const OUTPUT_INSTRUCTIONS = `Answer directly in one to four short Markdown bullets, at most 90 words.
-Paraphrase the sources naturally. Do not infer a step, prerequisite, or purpose that the sources do not state.
+Paraphrase naturally. Preserve warnings and conditions. Do not infer a step, prerequisite, or purpose.
 Use one bullet per requested action or decision before adding detail.
 Start each bullet with a hyphen and a complete sentence. Keep each bullet within one source.
 Use inline backticks for commands, filenames, configuration keys, and literal values. Never use code fences or HTML.

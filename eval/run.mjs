@@ -21,6 +21,7 @@ function options() {
     cdp: values.get("--cdp") ?? "http://172.19.0.1:9223",
     url: values.get("--url") ?? "http://localhost:9000/__smgen-assistant/frame.html?evaluation=1",
     output: values.get("--output") ?? `/tmp/smgen-assistant-eval-${Date.now()}.json`,
+    questions: values.get("--questions") ?? new URL("questions.yaml", import.meta.url).pathname,
     variants: values.get("--variants") ?? "first",
     scenarios: new Set((values.get("--scenarios") ?? "").split(",").map((value) => value.trim()).filter(Boolean)),
     sequences: values.get("--sequences") === "true",
@@ -193,7 +194,7 @@ async function evaluateModel(page, modelId, cases, result, output) {
 async function main() {
   const settings = options();
   if (!new Set(["first", "all"]).has(settings.variants)) throw new Error("--variants must be first or all");
-  const matrix = parseYaml(await readFile(new URL("questions.yaml", import.meta.url), "utf8"));
+  const matrix = parseYaml(await readFile(settings.questions, "utf8"));
   const cases = evaluationCases(matrix, settings);
   const result = {
     version: 1,

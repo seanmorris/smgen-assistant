@@ -86,6 +86,58 @@ test("generated prose receives citations from its supporting passages", () => {
   });
 });
 
+test("generated prose accepts documented call shorthand and inline HTML literals", () => {
+  const baseSource = sources[0];
+  assert.ok(baseSource);
+  const source = {
+    ...baseSource,
+    content: "Load the module with `<script async type = \"module\">`. Put PHP in a `<script type = \"text/php\">` element. Call `php.run('<?php echo 1;')` and await its exit code."
+  };
+  assert.equal(formatGeneratedAnswer("- Load the module with a `<script>` whose `type=\"module\"`.\n- Put PHP in a `<script type=\"text/php\">` element.\n- Call `php.run()` and await its exit code.", [source], "stop").ok, true);
+});
+
+test("question coverage ignores a leading environment phrase", () => {
+  const baseSource = sources[0];
+  assert.ok(baseSource);
+  const source = {
+    ...baseSource,
+    content: "Import `PhpWeb`. Listen for `output` and `error` events. Call `php.run('<?php echo 1;')` with a PHP string and await its exit code."
+  };
+  const answer = "- Import `PhpWeb`.\n- Add `output` and `error` listeners to capture stdout and stderr.\n- Call `php.run()` with the string and store its exit code.";
+  assert.equal(formatGeneratedAnswer(answer, [source], "stop", "From JavaScript, how do I run a PHP string, capture stdout and stderr, and get its exit code?").ok, true);
+});
+
+test("question coverage lets concise procedures rely on the question's setting", () => {
+  const baseSource = sources[0];
+  assert.ok(baseSource);
+  const staticHtml = {
+    ...baseSource,
+    content: "PHP can be included in static HTML pages. Load `php-tags.mjs` with an asynchronous `<script type=\"module\">` element. Put PHP inside `<script type=\"text/php\">` and set `data-stdout` to an output selector."
+  };
+  const staticAnswer = "- Load `php-tags.mjs` from a CDN using an asynchronous `<script type=\"module\">` element.\n- Put PHP inside `<script type=\"text/php\">` and set `data-stdout` to the output selector.";
+  assert.equal(formatGeneratedAnswer(staticAnswer, [staticHtml], "stop", "How do I add php-wasm to a plain static HTML page and display PHP output?").ok, true);
+
+  const pglite = {
+    ...baseSource,
+    content: "Install `php-wasm`, `pdo-pglite`, and `@electric-sql/pglite@^0.5.8`. Pass the `PGlite` constructor into `PhpWeb`. The `pgsql:` PDO driver becomes available. PHP 8.1 or newer and Vrzno are required."
+  };
+  const pgliteAnswer = "- Install `php-wasm`, `pdo-pglite`, and `@electric-sql/pglite@^0.5.8`.\n- Pass the `PGlite` constructor into `PhpWeb`.\n- Use the `pgsql:` PDO driver and ensure PHP 8.1 or newer and Vrzno are available.";
+  assert.equal(formatGeneratedAnswer(pgliteAnswer, [pglite], "stop", "What do I install and pass to PhpWeb so browser PHP can open a PostgreSQL-style PDO database with PGlite?").ok, true);
+});
+
+test("generated prose rejects an instruction that reverses a documented warning", () => {
+  const baseSource = sources[0];
+  assert.ok(baseSource);
+  const source = {
+    ...baseSource,
+    content: "Using `pages dev --no-bundle` can fail before PHP starts. Run `npx wrangler pages dev dist --d1 DB` for local testing."
+  };
+  assert.deepEqual(formatGeneratedAnswer("- Use `pages dev --no-bundle` for local testing.", [source], "stop"), {
+    ok: false,
+    reason: "unsupported-content"
+  });
+});
+
 test("generated prose removes a repeated answer-form cue", () => {
   const baseSource = sources[0];
   assert.ok(baseSource);
@@ -360,6 +412,37 @@ test("extractive fallback balances multiple sources and skips image markers", ()
     "- Set `BASE_URL` before the build. [Source 2]",
     "- Use the public site root. [Source 2]"
   ].join("\n"));
+});
+
+test("question-aware fallback omits a weak secondary passage", () => {
+  const baseSource = sources[0];
+  assert.ok(baseSource);
+  const commonjs = {
+    ...baseSource,
+    id: "commonjs",
+    content: "Core Node runtimes support CommonJS. Load `PhpNode` with `require('php-wasm/PhpNode')`, then pass PHP version `8.5` to its constructor."
+  };
+  const changelog = {
+    ...baseSource,
+    id: "changelog",
+    content: "Expanded Bun testing to include CommonJS coverage."
+  };
+  const extracted = formatExtractiveAnswerSet([commonjs, changelog], "How do I load the PHP 8.5 runtime from CommonJS in Node.js?");
+  assert.deepEqual(extracted.sources, [commonjs]);
+  assert.match(extracted.answer, /`require\('php-wasm\/PhpNode'\)`/u);
+  assert.doesNotMatch(extracted.answer, /Bun/u);
+});
+
+test("extractive fallback omits standalone emphasis labels", () => {
+  const baseSource = sources[0];
+  assert.ok(baseSource);
+  const source = {
+    ...baseSource,
+    content: "Load `php-tags.mjs` as an asynchronous module.\n\n**JSDelivr**\n\n**Unpkg**\n\nPut PHP in a `<script type=\"text/php\">` element."
+  };
+  const answer = formatExtractiveAnswer(source, "How do I put PHP in static HTML?");
+  assert.doesNotMatch(answer, /JSDelivr|Unpkg/u);
+  assert.match(answer, /`php-tags\.mjs`/u);
 });
 
 test("question-aware fallback selects feed membership, date order, and missing-date behavior", () => {
