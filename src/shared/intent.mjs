@@ -32,12 +32,12 @@ export function questionIntents(question) {
 export function questionIntentInstruction(question) {
   /** @type {Record<string, string>} */
   const instructions = {
-    what: "WHAT: state the documented identity, behavior, or value.",
-    why: "WHY: state only the documented reason.",
-    where: "WHERE: name the documented location, path, or URL.",
-    when: "WHEN: state the documented time or condition.",
-    how: "HOW: give the documented method or actions in order.",
-    who: "WHO: name the documented person, role, or actor."
+    what: "State the documented identity, behavior, or value.",
+    why: "State only the documented reason.",
+    where: "Name the documented location, path, or URL.",
+    when: "State the documented time or condition.",
+    how: "Give the documented method or actions in order.",
+    who: "Name the documented person, role, or actor."
   };
   const intents = questionIntents(question);
   if (!intents.length) return "";

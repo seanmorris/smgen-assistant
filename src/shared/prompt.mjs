@@ -22,7 +22,7 @@ Use one bullet per requested action or decision before adding detail.
 Start each bullet with a hyphen and a complete sentence. Keep each bullet within one source.
 Use inline backticks for commands, filenames, configuration keys, and literal values. Never use code fences or HTML.
 Do not write citations or source labels; the interface adds them.
-Do not use nested bullets, bold labels, headings, prefaces, closing notes, or facts absent from the sources.`;
+Do not use answer-form labels, nested bullets, bold labels, headings, prefaces, closing notes, or facts absent from the sources.`;
 
 /**
  * Report whether a question needs the previous user turn to resolve a reference.
@@ -47,7 +47,7 @@ export function promptMessages(question, sources, previousQuestion = "") {
     content: `${INSTRUCTIONS}\n\n${formatContext(sources)}`
   }]);
   if (previousQuestion) messages.push({ role: "user", content: `Earlier question for context: ${previousQuestion}` });
-  messages.push({ role: "user", content: `Question: ${question}\n${intentInstruction ? `Answer form: ${intentInstruction}\n` : ""}\n${OUTPUT_INSTRUCTIONS}` });
+  messages.push({ role: "user", content: `Question: ${question}\n${intentInstruction ? `Response focus: ${intentInstruction}\n` : ""}\n${OUTPUT_INSTRUCTIONS}` });
   return messages;
 }
 

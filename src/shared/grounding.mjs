@@ -72,6 +72,15 @@ function visibleGeneratedText(answer) {
 }
 
 /**
+ * Remove an internal answer-form cue when a model repeats it in the response.
+ *
+ * @param {string} text
+ */
+function stripAnswerFormLabel(text) {
+  return text.replace(/^(?:what|why|where|when|how|who):\s*/iu, "");
+}
+
+/**
  * Build a short answer from exact prose in the strongest retrieved passage.
  *
  * @param {CorpusChunk} source
@@ -422,10 +431,10 @@ export function formatGeneratedAnswer(answer, sources, _finishReason, question =
   /** @type {Array<{content: string, source: number}>} */
   const matched = [];
   for (const [blockIndex, raw] of rawBlocks.entries()) {
-    const normalized = raw
+    const normalized = stripAnswerFormLabel(raw
       .replace(/^\s*(?:[-*+]|\d+\.)\s*/u, "")
       .replace(/\s*\[Source \d+\]\s*/gu, "")
-      .trim();
+      .trim());
     if (!normalized
       || normalized.length > 280
       || /^#{1,6}\s/u.test(normalized)
@@ -503,7 +512,7 @@ export function formatGroundedAnswer(answer, sources, finishReason) {
       return { ok: false, reason: "invalid-shape" };
     }
     let source = Number(item.source);
-    const content = item.text.trim().replace(/\s+/gu, " ").replace(/^(?:[-*+]|\d+\.)\s+/u, "");
+    const content = stripAnswerFormLabel(item.text.trim().replace(/\s+/gu, " ").replace(/^(?:[-*+]|\d+\.)\s+/u, ""));
     if (!content || content.length > 140 || /(?:`{3,}|~{3,}|\[Source \d+\])/u.test(content) || source < 1 || source > sources.length) {
       return { ok: false, reason: "invalid-shape" };
     }

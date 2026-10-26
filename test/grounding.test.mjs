@@ -86,6 +86,18 @@ test("generated prose receives citations from its supporting passages", () => {
   });
 });
 
+test("generated prose removes a repeated answer-form cue", () => {
+  const baseSource = sources[0];
+  assert.ok(baseSource);
+  const source = { ...baseSource, content: "SMGen produces static HTML pages." };
+  assert.deepEqual(formatGeneratedAnswer("- WHAT: SMGen produces static HTML pages.", [source], "stop"), {
+    ok: true,
+    answer: "- SMGen produces static HTML pages. [Source 1]",
+    sources: [source],
+    filtered: false
+  });
+});
+
 test("generated prose ignores private reasoning tags from chat templates", () => {
   for (const answer of [
     "<think>Compare the source before answering.</think>\n\n- Initialize the site with `smgen init`.",

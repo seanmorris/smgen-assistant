@@ -49,8 +49,11 @@ test("question forms guide the requested kind of answer", () => {
   assert.deepEqual(questionIntents("What commands and files do I need to build it?"), ["how"]);
   assert.deepEqual(questionIntents("Where is it written and when does that happen?"), ["where", "when"]);
   assert.deepEqual(questionIntents("Why does it run, and who runs it?"), ["why", "who"]);
-  assert.match(promptMessages("How do I build it?", sources).at(-1)?.content ?? "", /HOW: give the documented method or actions/iu);
-  assert.match(promptMessages("What does it build?", sources).at(-1)?.content ?? "", /WHAT: state the documented identity, behavior, or value/iu);
+  const howPrompt = promptMessages("How do I build it?", sources).at(-1)?.content ?? "";
+  const whatPrompt = promptMessages("What does it build?", sources).at(-1)?.content ?? "";
+  assert.match(howPrompt, /Response focus: Give the documented method or actions/iu);
+  assert.match(whatPrompt, /Response focus: State the documented identity, behavior, or value/iu);
+  assert.doesNotMatch(`${howPrompt}\n${whatPrompt}`, /\b(?:WHAT|HOW):/u);
 });
 
 test("prompt fitting drops old context and low-ranked sources", async () => {
