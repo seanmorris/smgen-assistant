@@ -2,6 +2,7 @@
 title: Configuration
 description: Configure assistant models, device limits, retrieval, and build paths.
 weight: 2
+llms: reference
 menus:
   documentation:
     weight: 2

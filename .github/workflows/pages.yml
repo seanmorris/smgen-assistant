@@ -32,7 +32,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: seanmorris/smgen
-          ref: e48462fdcdb28110eda38b382311f60934765775
+          ref: a778309ed532e68518ee42e99b1f710aa5648cfc
           path: .smgen-core
 
       - name: Set up Node.js

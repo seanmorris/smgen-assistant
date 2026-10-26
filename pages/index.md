@@ -2,6 +2,7 @@
 title: Getting Started
 description: Build a private in-browser documentation assistant for an SMGen site.
 weight: 0
+llms: start
 author:
   - name: Sean Morris
 jsonld:

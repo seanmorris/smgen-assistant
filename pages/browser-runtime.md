@@ -2,6 +2,7 @@
 title: Browser Runtime
 description: Understand assistant loading, model storage, WebGPU checks, and failures.
 weight: 4
+llms: guides
 menus:
   documentation:
     weight: 4

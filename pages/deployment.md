@@ -2,6 +2,7 @@
 title: Deployment
 description: Build and publish smgen-assistant documentation through GitHub Pages.
 weight: 7
+llms: guides
 menus:
   documentation:
     weight: 7

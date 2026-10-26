@@ -39,6 +39,9 @@ $endif$
 <?php renderJsonLd($frontmatter, $pageFile); ?>
 	<link rel="icon" type="image/png" href="<?=escapeHtml(resolveAssetUrl('/icon-16.png'))?>">
 	<link rel="sitemap" href="<?=escapeHtml(resolveAssetUrl('/sitemap.xml'))?>" />
+<?php if(llmsEnabled()): ?>
+	<link rel="describedby" type="text/markdown" href="<?=escapeHtml(resolveAssetUrl('/llms.txt'))?>" />
+<?php endif; ?>
 <?php foreach(rssFeedDefinitions() as $rssFeed): ?>
 	<link rel="alternate" type="application/rss+xml" title="<?=escapeHtml($rssFeed['title']);?>" href="<?=escapeHtml(resolveAssetUrl($rssFeed['path']));?>" />
 <?php endforeach; ?>

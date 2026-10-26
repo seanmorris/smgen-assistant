@@ -2,6 +2,7 @@
 title: Privacy and Licensing
 description: Understand local processing, published corpus data, and third-party licenses.
 weight: 6
+llms: optional
 menus:
   documentation:
     weight: 6

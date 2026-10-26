@@ -2,6 +2,7 @@
 title: Preparing Content
 description: Select Markdown, create useful chunks, and link answers to exact sections.
 weight: 3
+llms: guides
 menus:
   documentation:
     weight: 3

@@ -2,6 +2,7 @@
 title: Development
 description: Run checks, evaluate models, and inspect a release archive.
 weight: 5
+llms: reference
 menus:
   documentation:
     weight: 5

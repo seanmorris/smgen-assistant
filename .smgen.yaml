@@ -20,6 +20,26 @@ BODY_SCRIPTS:
 
 SEARCH_ENABLED: 0
 
+LLMS:
+  title: smgen-assistant
+  summary: Build a private in-browser assistant for static SMGen documentation.
+  details: |
+    The published assistant uses static assets. Retrieval and model inference
+    run in the visitor's browser.
+  sections:
+    start:
+      title: Start Here
+      weight: 0
+    guides:
+      title: Guides
+      weight: 10
+    reference:
+      title: Reference
+      weight: 20
+    optional:
+      title: Optional
+      weight: 100
+
 MENUS:
   documentation:
     label: Documentation

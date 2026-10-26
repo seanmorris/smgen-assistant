@@ -2,6 +2,7 @@
 title: Installation
 description: Install smgen-assistant and add it to an SMGen build.
 weight: 1
+llms: start
 menus:
   documentation:
     title: Installation
