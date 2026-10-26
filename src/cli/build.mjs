@@ -1,8 +1,10 @@
 // @ts-check
 
-import { access, chmod, cp, lstat, mkdir, mkdtemp, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { access, chmod, cp, lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { VERSION } from "../shared/version.mjs";
 import { buildCorpus } from "./corpus.mjs";
 
 /** @typedef {import('./config.mjs').BuildConfig} BuildConfig */
@@ -38,6 +40,28 @@ async function rejectSymlink(filename) {
  */
 function stableJson(value) {
   return `${JSON.stringify(value, null, 2)}\n`;
+}
+
+/**
+ * Create a short deterministic identifier for generated browser data.
+ *
+ * @param {unknown} value
+ */
+function contentId(value) {
+  return createHash("sha256").update(stableJson(value)).digest("hex").slice(0, 20);
+}
+
+/**
+ * Add the generated asset version to frame-owned static resources.
+ *
+ * @param {string} html
+ * @param {string} assetVersion
+ */
+function versionFrameAssets(html, assetVersion) {
+  const query = `?v=${encodeURIComponent(assetVersion)}`;
+  return html
+    .replace('href="assistant.css"', `href="assistant.css${query}"`)
+    .replace('src="frame.js"', `src="frame.js${query}"`);
 }
 
 /**
@@ -85,10 +109,23 @@ export async function buildSiteAssistant(config) {
       chunkCharacters: config.chunkCharacters,
       renderedDirectory: output
     });
+    const siteId = contentId({
+      baseUrl: config.baseUrl,
+      title: config.publicConfig.title,
+      sources: corpus.sources
+    });
+    const assetVersion = contentId({
+      packageVersion: VERSION,
+      config: config.publicConfig,
+      corpus
+    });
+    const publicConfig = { ...config.publicConfig, siteId, assetVersion };
     const browserAssets = await resolveBrowserAssets();
     await cp(browserAssets, stage, { recursive: true, force: true });
+    const framePath = path.join(stage, "frame.html");
+    await writeFile(framePath, versionFrameAssets(await readFile(framePath, "utf8"), assetVersion), "utf8");
     await writeFile(path.join(stage, "corpus.json"), stableJson(corpus), "utf8");
-    await writeFile(path.join(stage, "config.json"), stableJson(config.publicConfig), "utf8");
+    await writeFile(path.join(stage, "config.json"), stableJson(publicConfig), "utf8");
     await chmod(stage, 0o755);
 
     try {

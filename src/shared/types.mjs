@@ -41,6 +41,8 @@
 /**
  * @typedef {object} PublicAssistantConfig
  * @property {1} version
+ * @property {string} [siteId]
+ * @property {string} [assetVersion]
  * @property {string} title
  * @property {string} greeting
  * @property {AssistantModel} model

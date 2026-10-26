@@ -105,11 +105,16 @@ test("loader verifies model support before showing its deferred launcher", async
         })
       }
     },
-    fetch: async (/** @type {URL} */ url) => {
+    fetch: async (/** @type {URL} */ url, /** @type {RequestInit} */ options = {}) => {
       fetched.push(url.href);
+      assert.equal(options.cache, "no-cache");
       return {
         ok: true,
-        json: async () => ({ model: { id: "test-model-q4f32_1", label: "Test model" } })
+        json: async () => ({
+          siteId: "docs-site",
+          assetVersion: "browser-build",
+          model: { id: "test-model-q4f32_1", label: "Test model" }
+        })
       };
     },
     location: { href: "https://example.test/project/page.html" },
@@ -160,7 +165,7 @@ test("loader verifies model support before showing its deferred launcher", async
   const shell = appended[2];
   const frame = /** @type {FakeElement | undefined} */ (shell?.children[0]);
   assert.equal(frame?.tagName, "IFRAME");
-  assert.equal(frame?.src, "https://example.test/project/__smgen-assistant/frame.html");
+  assert.equal(frame?.src, "https://example.test/project/__smgen-assistant/frame.html?site=docs-site&v=browser-build");
   assert.equal(button?.hidden, false);
   assert.equal(button?.attributes.get("aria-expanded"), "true");
   assert.equal(button?.classes.has("is-open"), true);
@@ -244,6 +249,17 @@ test("loader stays hidden when no configured model matches the adapter", async (
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(appended.map((element) => element.tagName), ["STYLE", "BUTTON"]);
   assert.equal(appended[1]?.hidden, true);
+});
+
+test("generated data and browser storage are isolated by site", async () => {
+  const loaderSource = await readFile(new URL("../src/browser/loader.mjs", import.meta.url), "utf8");
+  const frameSource = await readFile(new URL("../src/browser/frame.mjs", import.meta.url), "utf8");
+  assert.match(loaderSource, /cache: "no-cache"/u);
+  assert.match(loaderSource, /frameUrl\.searchParams\.set\("site", siteId\)/u);
+  assert.match(loaderSource, /frameUrl\.searchParams\.set\("v", loadedConfig\.assetVersion\)/u);
+  assert.match(frameSource, /cache: "no-cache"/u);
+  assert.match(frameSource, /loadedConfig\.siteId \|\| assetBase\.pathname/u);
+  assert.match(frameSource, /configureStorageKeys\(loadedConfig\)/u);
 });
 
 test("lotus launcher retains its license metadata and state animation hooks", async () => {

@@ -52,6 +52,18 @@ SMGen applies `BASE_URL` when it writes this script URL. A project hosted at
 `https://example.github.io/manual/` therefore requests
 `/manual/__smgen-assistant/loader.js`.
 
+Give each project a stable name when several development sites reuse the same
+origin and assistant path:
+
+```yaml
+BODY_SCRIPTS:
+  - /__smgen-assistant/loader.js?site=manual
+```
+
+The name separates saved conversations and prevents an older loader URL from
+another project from carrying into the page. A normal deployment can omit it.
+The generated configuration also derives a site identity from the corpus.
+
 ## Add the Build Hook
 
 Create `after-smgen.sh` in the project root:

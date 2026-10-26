@@ -10,7 +10,8 @@ const lotusIconMarkup = /** @type {typeof globalThis & {__SMGEN_ASSISTANT_LOTUS_
   if (document.querySelector("[data-smgen-assistant-launcher]")) return;
   const script = /** @type {HTMLScriptElement | null} */ (document.currentScript);
   if (!script?.src) return;
-  const assetBase = new URL("./", script.src);
+  const scriptUrl = new URL(script.src);
+  const assetBase = new URL("./", scriptUrl);
   const expectedOrigin = assetBase.origin;
   const openStorageKey = `smgen-assistant:open:${assetBase.pathname}`;
   const sizeStorageKey = `smgen-assistant:size:${assetBase.pathname}`;
@@ -18,17 +19,20 @@ const lotusIconMarkup = /** @type {typeof globalThis & {__SMGEN_ASSISTANT_LOTUS_
   const minimumHeight = 360;
   const defaultSize = { width: 400, height: 624 };
   const darkPreference = window.matchMedia?.("(prefers-color-scheme: dark)");
+  /** @type {PublicAssistantConfig | null} */
+  let loadedConfig = null;
 
   /** Check whether this browser can run at least one configured model. */
   const supportsConfiguredModel = async () => {
     if (!("gpu" in navigator)) return false;
     try {
       const [response, adapter] = await Promise.all([
-        fetch(new URL("config.json", assetBase)),
+        fetch(new URL("config.json", assetBase), { cache: "no-cache", credentials: "same-origin" }),
         navigator.gpu.requestAdapter({ powerPreference: "high-performance" })
       ]);
       if (!response.ok || !adapter) return false;
       const config = /** @type {PublicAssistantConfig} */ (await response.json());
+      loadedConfig = config;
       const models = Array.isArray(config.models) && config.models.length ? config.models : [config.model];
       const deviceMemoryGB = /** @type {Navigator & {deviceMemory?: number}} */ (navigator).deviceMemory ?? null;
       return models.some((model) => model && adapterCompatibilityIssue(adapter, model, deviceMemoryGB) === null);
@@ -288,7 +292,11 @@ const lotusIconMarkup = /** @type {typeof globalThis & {__SMGEN_ASSISTANT_LOTUS_
       frame = document.createElement("iframe");
       frame.className = "smgen-assistant-frame";
       frame.title = "Documentation assistant";
-      frame.src = new URL("frame.html", assetBase).href;
+      const frameUrl = new URL("frame.html", assetBase);
+      const siteId = scriptUrl.searchParams.get("site") || loadedConfig?.siteId;
+      if (siteId) frameUrl.searchParams.set("site", siteId);
+      if (loadedConfig?.assetVersion) frameUrl.searchParams.set("v", loadedConfig.assetVersion);
+      frame.src = frameUrl.href;
       frame.style.visibility = "hidden";
       frame.setAttribute("allow", "webgpu");
       const resize = document.createElement("button");

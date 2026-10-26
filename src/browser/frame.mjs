@@ -31,8 +31,8 @@ import { renderMarkdown } from "./render.mjs";
 const assetBase = new URL("./", import.meta.url);
 const evaluationMode = new URL(location.href).searchParams.get("evaluation") === "1";
 const deviceMemoryGB = /** @type {Navigator & {deviceMemory?: number}} */ (navigator).deviceMemory ?? null;
-const transcriptKey = `smgen-assistant:transcript:v3:${assetBase.pathname}`;
-const modelKey = `smgen-assistant:model:${assetBase.pathname}`;
+let transcriptKey = `smgen-assistant:transcript:v3:${assetBase.pathname}`;
+let modelKey = `smgen-assistant:model:${assetBase.pathname}`;
 const titleElement = /** @type {HTMLHeadingElement} */ (document.querySelector("#assistant-title"));
 const statusElement = /** @type {HTMLParagraphElement} */ (document.querySelector("#status"));
 const liveStatusElement = /** @type {HTMLParagraphElement} */ (document.querySelector("#live-status"));
@@ -106,9 +106,21 @@ async function deleteEvaluationModel(modelId) {
  * @returns {Promise<T>}
  */
 async function fetchJson(name) {
-  const response = await fetch(new URL(name, assetBase), { credentials: "same-origin" });
+  const response = await fetch(new URL(name, assetBase), { cache: "no-cache", credentials: "same-origin" });
   if (!response.ok) throw new Error(`${name} returned HTTP ${response.status}`);
   return /** @type {Promise<T>} */ (response.json());
+}
+
+/**
+ * Isolate saved conversation and model choices to the generated documentation site.
+ *
+ * @param {PublicAssistantConfig} loadedConfig
+ */
+function configureStorageKeys(loadedConfig) {
+  const requestedSiteId = new URL(location.href).searchParams.get("site");
+  const namespace = requestedSiteId || loadedConfig.siteId || assetBase.pathname;
+  transcriptKey = `smgen-assistant:transcript:v3:${namespace}`;
+  modelKey = `smgen-assistant:model:${namespace}`;
 }
 
 /** Save completed conversation turns for this browser tab. */
@@ -702,6 +714,7 @@ async function start() {
     config = loadedConfig;
     corpus = loadedCorpus;
     gpuAdapter = detectedAdapter;
+    configureStorageKeys(loadedConfig);
     titleElement.textContent = loadedConfig.title;
     configureModelPicker(gpuAdapter);
     if (evaluationMode) {
