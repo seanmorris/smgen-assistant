@@ -298,6 +298,10 @@ export async function parseBuildOptions(argv, environment = process.env, cwd = p
   const models = modelOptions(fileConfig);
   const model = /** @type {AssistantModel} */ (models[0]);
   const retrieval = objectValue(fileConfig.retrieval);
+  const retrievalMode = retrieval.mode ?? "lexical";
+  if (typeof retrievalMode !== "string" || !["lexical", "semantic", "hybrid"].includes(retrievalMode)) {
+    throw new Error("retrieval.mode must be lexical, semantic, or hybrid");
+  }
   const pagesValue = flags["--pages"] ?? fileConfig.pages ?? "./pages";
   const outputValue = flags["--output"] ?? fileConfig.output ?? "./docs";
   const baseUrlValue = flags["--base-url"] ?? fileConfig.baseUrl ?? environment.BASE_URL ?? "";
@@ -322,6 +326,7 @@ export async function parseBuildOptions(argv, environment = process.env, cwd = p
         model,
         models,
         retrieval: {
+          mode: /** @type {'lexical' | 'semantic' | 'hybrid'} */ (retrievalMode),
           maxChunks: optionalPositiveInteger(retrieval.maxChunks, "retrieval.maxChunks", DEFAULT_CONFIG.retrieval.maxChunks),
           maxCharacters: optionalPositiveInteger(retrieval.maxCharacters, "retrieval.maxCharacters", DEFAULT_CONFIG.retrieval.maxCharacters)
         }

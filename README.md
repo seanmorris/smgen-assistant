@@ -219,6 +219,42 @@ The frame holds generated text until it can check the complete answer. It valida
 
 The browser loads the full corpus when the visitor opens the assistant. A few megabytes of source Markdown fits this design. A corpus measured in tens of megabytes should use a partitioned index so the browser can fetch candidates on demand.
 
+## Experimental semantic retrieval
+
+The `experiment/langchain-hybrid-retrieval` branch adds optional local semantic
+search using LangChain's `MemoryVectorStore` and Transformers.js. The default
+remains `retrieval.mode: lexical`. Select `semantic` to search embeddings alone,
+or `hybrid` to combine semantic and lexical candidate ranks:
+
+```yaml
+retrieval:
+  mode: hybrid
+  maxChunks: 2
+  maxCharacters: 3000
+```
+
+`npm run build:experiment` builds this repository's experimental assistant.
+The builder embeds the existing chunks into `semantic-index.json` using a
+pinned, quantized MiniLM model. The index records its model revision, runtime,
+and corpus fingerprint; incompatible or stale indexes fail explicitly.
+
+The first semantic question downloads the embedding model into browser storage.
+A dedicated worker embeds questions locally and searches the precomputed
+vectors. ONNX runtime assets are served with the assistant. This adds a model
+download and CPU/memory use; no question is sent to an embedding API or tracing
+service. HTTPS or localhost is required. The embedding tokenizer truncates long
+sections, so this remains an experiment for relatively short passages.
+
+Hybrid ranking uses ten candidates per retriever, reciprocal-rank fusion with
+constant 60 and semantic weight 0.65, and a semantic cosine threshold of 0.2.
+These are experimental defaults, not calibrated confidence probabilities.
+SMGen metadata, source URLs, prompt budgets, grounding checks, and the WebLLM
+worker remain in use. Search errors are surfaced rather than silently counted
+as successful lexical runs.
+
+See [the evaluation instructions](eval/README.md) for local comparisons and
+Mac testing over networked CDP.
+
 ## Loading and browser isolation
 
 `loader.js` derives its asset path from its own script URL, so root and nested `BASE_URL` deployments use the same output. It shows the launcher only when the adapter can run at least one configured model. It creates the iframe only after activation. An open assistant returns after an ordinary static page navigation through tab-scoped state.

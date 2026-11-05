@@ -22,6 +22,24 @@ test("normalizeBaseUrl accepts empty and nested site paths", () => {
   assert.throws(() => normalizeBaseUrl("/docs/../private"), /dot segments/u);
 });
 
+test("experimental retrieval modes reject invalid configuration", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "smgen-assistant-retrieval-"));
+  try {
+    for (const mode of ["lexical", "semantic", "hybrid"]) {
+      await writeFile(path.join(directory, ".smgen-assistant.yaml"), `retrieval:\n  mode: ${mode}\n`);
+      const parsed = await parseBuildOptions(["build"], {}, directory);
+      if (parsed.help) assert.fail("expected build settings");
+      assert.equal(parsed.config.publicConfig.retrieval.mode, mode);
+    }
+    for (const mode of ["typo", "[semantic]", "false"]) {
+      await writeFile(path.join(directory, ".smgen-assistant.yaml"), `retrieval:\n  mode: ${mode}\n`);
+      await assert.rejects(parseBuildOptions(["build"], {}, directory), /retrieval.mode/u);
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("command flags override YAML and environment defaults", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "smgen-assistant-config-"));
   try {

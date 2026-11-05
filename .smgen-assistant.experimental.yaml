@@ -1,0 +1,10 @@
+title: Ask smgen-assistant
+greeting: Ask how to install, configure, embed, or develop smgen-assistant.
+pages: ./pages
+output: ./docs
+chunkCharacters: 4000
+retrieval:
+  mode: hybrid
+  maxChunks: 2
+  maxCharacters: 3000
+# Uses the ordinary default chat model. CDP retrieval-only runs do not load it.

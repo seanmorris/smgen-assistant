@@ -43,6 +43,7 @@ await build({
 await build({
   entryPoints: {
     frame: path.join(root, "src/browser/frame.mjs"),
+    "retrieval-worker": path.join(root, "src/browser/retrieval-worker.mjs"),
     "engine-worker": path.join(root, "src/browser/engine-worker.mjs"),
     "service-worker": path.join(root, "src/browser/service-worker.mjs")
   },
@@ -65,3 +66,18 @@ await Promise.all([
   cp(path.join(root, "src/browser/logo.svg"), path.join(output, "browser/logo.svg")),
   cp(path.join(root, "src/browser/lotus.svg"), path.join(output, "browser/lotus.svg"))
 ]);
+
+// Serve ONNX's worker loader and WASM beside the assistant, without a CDN runtime dependency.
+const onnxDist = path.join(root, "node_modules/onnxruntime-web/dist");
+await mkdir(path.join(output, "browser/onnx"), { recursive: true });
+await Promise.all(["ort-wasm-simd-threaded.mjs", "ort-wasm-simd-threaded.wasm"].map((filename) =>
+  cp(path.join(onnxDist, filename), path.join(output, "browser/onnx", filename))
+));
+
+await mkdir(path.join(output, "browser/licenses"), { recursive: true });
+await Promise.all([
+  ["node_modules/@langchain/core/LICENSE", "langchain-core.txt"],
+  ["node_modules/@langchain/classic/LICENSE", "langchain-classic.txt"],
+  ["node_modules/@huggingface/transformers/LICENSE", "transformers.txt"],
+  ["licenses/onnxruntime-LICENSE.txt", "onnxruntime.txt"]
+].map(([source, name]) => cp(path.join(root, /** @type {string} */ (source)), path.join(output, "browser/licenses", /** @type {string} */ (name)))));

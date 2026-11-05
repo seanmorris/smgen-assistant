@@ -36,10 +36,12 @@
   ],
   "scripts": {
     "build": "node scripts/build.mjs",
+    "build:experiment": "npm run build && node bin/smgen-assistant.mjs build --config .smgen-assistant.experimental.yaml",
     "site": "bash scripts/build-site.sh",
     "dev": "npm run build && bash scripts/run-smgen.sh watch",
     "clean": "node scripts/build.mjs --clean",
     "eval": "node eval/run.mjs",
+    "eval:retrieval": "node eval/retrieval.mjs",
     "lint": "eslint .",
     "test": "npm run build && node --test test/*.test.mjs",
     "typecheck": "tsc --noEmit",
@@ -48,6 +50,9 @@
     "prepack": "npm run check"
   },
   "dependencies": {
+    "@huggingface/transformers": "4.3.2",
+    "@langchain/classic": "1.0.57",
+    "@langchain/core": "1.3.4",
     "yaml": "2.9.1"
   },
   "devDependencies": {

@@ -1,0 +1,64 @@
+version: 1
+# Questions for this repository's own pages, independent of the SMGen core matrix.
+# The first three scenarios reproduce the initial investigation; others are controls.
+roles:
+  - id: site-owner
+    label: Site owner
+    scenarios:
+      - id: greeting
+        expectedSources: [/configuration.html#interface-text]
+        requiredFacts: [The greeting setting controls the welcome message.]
+        variants:
+          - How do I change the greeting?
+          - Can I customize the welcome message?
+          - Where do I set what the assistant says when it opens?
+      - id: privacy
+        expectedSources: [/privacy-and-licensing.html#keep-questions-private]
+        requiredFacts: [Questions and answers stay in the browser.]
+        variants:
+          - Are my questions sent to a server?
+          - Does anything I type leave my laptop?
+          - Does the assistant phone home with my messages?
+      - id: exclusion
+        expectedSources: [/content.html#select-pages]
+        requiredFacts: [Set assistant to false in page or directory frontmatter.]
+        variants:
+          - How do I exclude a page from the assistant?
+          - How can I keep a document out of the chatbot?
+          - Can I prevent the bot from reading certain articles?
+      - id: launcher
+        expectedSources: [/browser-runtime.html#the-launcher-is-missing]
+        requiredFacts: [Check WebGPU support and model compatibility.]
+        variants:
+          - Why is the launcher missing?
+          - I cannot see the chat button. What should I check?
+          - The floating assistant icon never appears. What could cause that?
+      - id: literal-setting
+        expectedSources: [/configuration.html#retrieval]
+        requiredFacts: [retrieval.maxChunks limits the number of passages.]
+        variants:
+          - What does retrieval.maxChunks control?
+          - How many documentation excerpts can the model read for one question?
+          - Where can I set maxChunks and maxCharacters?
+      - id: grounded-answer
+        expectedSources: [/content.html#grounded-answers]
+        requiredFacts: [Unsupported generation is replaced with source excerpts.]
+        variants:
+          - What happens if an answer invents a command?
+          - What stops the bot from making things up?
+          - What does the assistant show when its answer fails validation?
+      - id: unrelated
+        expectedSources: []
+        requiredFacts: []
+        variants:
+          - What is the best recipe for chocolate brownies?
+          - Who won yesterday's professional basketball game?
+          - How do I diagnose a broken bicycle derailleur?
+conversationSequences:
+  - id: greeting-followup
+    role: site-owner
+    turns:
+      - question: How do I change the greeting?
+        expectedSources: [/configuration.html#interface-text]
+      - question: And where do I set that?
+        expectedSources: [/configuration.html#interface-text]
