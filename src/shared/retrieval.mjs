@@ -348,17 +348,15 @@ function fitCandidate(selected, candidate, maxCharacters) {
  */
 
 /**
- * Select the highest-scoring chunks within result and character budgets.
+ * Rank lexical candidates before applying passage and result budgets.
  *
  * @param {CorpusChunk[]} chunks
  * @param {string} query
  * @param {RetrievalOptions} options
- * @returns {CorpusChunk[]}
  */
-export function retrieveChunks(chunks, query, options) {
+function rankLexicalQuery(chunks, query, options) {
   const searchQuery = options.previousQuery ? `${options.previousQuery} ${query}` : query;
   const queryTerms = tokenize(searchQuery);
-  if (!queryTerms.length) return [];
   const terms = weightedTerms(chunks, queryTerms);
   const intents = questionIntents(query);
   const scored = chunks
@@ -367,10 +365,33 @@ export function retrieveChunks(chunks, query, options) {
   const ranked = scored
     .sort((a, b) => b.score - a.score || a.index - b.index);
   const minimumScore = Math.max(8, (ranked[0]?.score ?? 0) * 0.35);
+  return { terms, ranked: queryTerms.length ? ranked.filter(({ score }) => score >= minimumScore) : [] };
+}
+
+/**
+ * Expose lexical candidates for rank fusion while retaining the baseline scoring.
+ * @param {CorpusChunk[]} chunks
+ * @param {string} query
+ * @param {RetrievalOptions} options
+ */
+export function rankLexicalChunks(chunks, query, options) {
+  return rankLexicalQuery(chunks, query, options).ranked;
+}
+
+/**
+ * Retrieve the original lexical baseline with its task and diversity rules.
+ *
+ * @param {CorpusChunk[]} chunks
+ * @param {string} query
+ * @param {RetrievalOptions} options
+ * @returns {CorpusChunk[]}
+ */
+export function retrieveChunks(chunks, query, options) {
+  const { terms, ranked } = rankLexicalQuery(chunks, query, options);
   /** @type {CorpusChunk[]} */
   const selected = [];
   const maxChunks = focusedQuery(query) ? 1 : options.maxChunks;
-  const remaining = ranked.filter(({ score }) => score >= minimumScore);
+  const remaining = [...ranked];
   const sources = new Set();
   while (selected.length < maxChunks && remaining.length) {
     let index = 0;
@@ -390,6 +411,27 @@ export function retrieveChunks(chunks, query, options) {
     if (!fitted) continue;
     selected.push(fitted);
     sources.add(item.chunk.sourceId);
+  }
+  return selected;
+}
+
+/**
+ * Fit an externally ranked result set into the existing passage budgets.
+ *
+ * @param {CorpusChunk[]} ranked
+ * @param {string} query
+ * @param {RetrievalOptions} options
+ * @returns {CorpusChunk[]}
+ */
+export function fitRankedChunks(ranked, query, options) {
+  const searchQuery = options.previousQuery ? `${options.previousQuery} ${query}` : query;
+  const terms = weightedTerms(ranked, tokenize(searchQuery));
+  /** @type {CorpusChunk[]} */
+  const selected = [];
+  for (const chunk of ranked) {
+    if (selected.length >= options.maxChunks) break;
+    const fitted = fitCandidate(selected, focusChunk(chunk, terms), options.maxCharacters);
+    if (fitted) selected.push(fitted);
   }
   return selected;
 }

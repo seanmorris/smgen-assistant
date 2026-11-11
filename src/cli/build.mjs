@@ -1,7 +1,7 @@
 // @ts-check
 
 import { createHash } from "node:crypto";
-import { access, chmod, cp, lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { access, chmod, cp, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { VERSION } from "../shared/version.mjs";
@@ -49,6 +49,26 @@ function stableJson(value) {
  */
 function contentId(value) {
   return createHash("sha256").update(stableJson(value)).digest("hex").slice(0, 20);
+}
+
+/**
+ * Identify the actual browser code so experimental rebuilds invalidate caches and reports.
+ * @param {string} directory
+ */
+async function browserAssetId(directory) {
+  const hash = createHash("sha256");
+  /** Visit assets in deterministic path order. @param {string} relative */
+  async function visit(relative) {
+    const entries = await readdir(path.join(directory, relative), { withFileTypes: true });
+    entries.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+    for (const entry of entries) {
+      const filename = path.join(relative, entry.name);
+      if (entry.isDirectory()) await visit(filename);
+      else if (entry.isFile()) hash.update(filename.split(path.sep).join("/")).update("\0").update(await readFile(path.join(directory, filename)));
+    }
+  }
+  await visit("");
+  return hash.digest("hex");
 }
 
 /**
@@ -111,23 +131,36 @@ export async function buildSiteAssistant(config) {
       renderedDirectory: output,
       ...(config.pageManifest ? { pageManifest: config.pageManifest } : {})
     });
+    let semanticIndex;
+    if (config.publicConfig.retrieval.mode && config.publicConfig.retrieval.mode !== "lexical") {
+      const { LocalEmbeddings, buildSemanticIndex } = await import("../shared/semantic.mjs");
+      const embeddings = new LocalEmbeddings();
+      try {
+        semanticIndex = await buildSemanticIndex(corpus.chunks, embeddings);
+      } finally {
+        await embeddings.dispose();
+      }
+    }
     const siteId = contentId({
       baseUrl: config.baseUrl,
       title: config.publicConfig.title,
       sources: corpus.sources
     });
+    const browserAssets = await resolveBrowserAssets();
     const assetVersion = contentId({
       packageVersion: VERSION,
+      browserAssets: await browserAssetId(browserAssets),
       config: config.publicConfig,
-      corpus
+      corpus,
+      semanticIndex
     });
     const publicConfig = { ...config.publicConfig, siteId, assetVersion };
-    const browserAssets = await resolveBrowserAssets();
     await cp(browserAssets, stage, { recursive: true, force: true });
     const framePath = path.join(stage, "frame.html");
     await writeFile(framePath, versionFrameAssets(await readFile(framePath, "utf8"), assetVersion), "utf8");
     await writeFile(path.join(stage, "corpus.json"), stableJson(corpus), "utf8");
     await writeFile(path.join(stage, "config.json"), stableJson(publicConfig), "utf8");
+    if (semanticIndex) await writeFile(path.join(stage, "semantic-index.json"), stableJson(semanticIndex), "utf8");
     await chmod(stage, 0o755);
 
     try {

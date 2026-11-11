@@ -1,5 +1,130 @@
 # Assistant evaluation questions
 
+## Experimental retrieval comparison
+
+Build the experimental branch and run the Node comparison against this
+repository's own documentation:
+
+```sh
+npm ci
+npm run build:experiment
+npm run eval:retrieval -- --output /tmp/smgen-retrieval-node.json
+node eval/summarize.mjs /tmp/smgen-retrieval-node.json
+```
+
+`assistant-questions.yaml` includes the paraphrase failures from the initial
+investigation, additional topic and identifier controls, unrelated questions,
+and a follow-up sequence. The original `questions.yaml` targets SMGen core
+documentation and should be used only with that corpus. This small matrix is a
+development check, not a held-out quality benchmark. Add other sites and unseen
+questions before making adoption decisions.
+
+The initial Linux run on 2026-11-05 used Node 22.23.2 and headless Chromium 152.
+Both runtimes retrieved the expected section for 8/20 answerable cases with
+lexical search, 15/20 with semantic search, and 14/20 with hybrid search. All
+three modes returned no sources for the three unrelated questions. The CDP
+run completed 69 cases without errors and without WebGPU. Small score differences
+between native CPU and browser WASM inference can change secondary candidates
+near the similarity threshold. These results do not measure generated answer
+quality or performance on the Mac.
+
+The Mac run on 2026-11-11 used Chrome 150, a 32 GB `MacIntel` device, and an
+Apple Metal 3 WebGPU adapter. Its 69-case retrieval-only run matched the Linux
+coverage exactly: lexical retrieved every expected section for 8/20 answerable
+cases, semantic for 15/20, and hybrid for 14/20; all three rejected the three
+unrelated questions. Median warm search took 1 ms, 9 ms, and 10 ms respectively.
+The first semantic query took 1.608 seconds; hybrid initialization took 446 ms
+after the embedding assets entered Chrome's HTTP cache.
+
+The complete Mac run used `Qwen2.5-1.5B-Instruct-q4f32_1-MLC` for all three
+modes and completed 69 cases without errors. Six generated answers per mode
+passed grounding unchanged. The other generated answers used the extractive
+fallback when validation rejected unsupported or incomplete content. Median
+warm generation took 1.724 seconds with lexical retrieval, 1.433 seconds with
+semantic retrieval, and 1.244 seconds with hybrid retrieval. On this matrix,
+semantic retrieval improved source coverage substantially, hybrid fusion did
+not improve on semantic retrieval, and the small chat model remained the main
+limit on generated-answer acceptance.
+
+A follow-up tuning run kept the `0.20` query relevance gate, admitted secondary
+semantic candidates down to `0.18`, lowered the reciprocal-rank constant from
+`60` to `5`, and raised the experimental site's passage limit from two to four.
+Expected-source coverage rose from 70% to 90% for hybrid retrieval while all
+three unrelated questions still returned no sources. The complete 23-case run
+had no errors and kept generated-answer acceptance at 30%; median warm search
+was 21 ms and median warm generation was 1.822 seconds. Six passages did not
+recover another expected source. These values are promising defaults for this
+corpus, not a general calibration; validate them on additional sites and unseen
+questions before exposing them as stable configuration.
+
+The next Mac run tightened the answer prompt around source wording and taught
+coverage validation to recognize common reader/documentation terms without
+accepting unsupported technical literals. Qwen2.5 1.5B accepted 11/20 generated
+answers (55%) with a 2.020-second median warm generation time. Qwen3.5 9B
+accepted 19/20 (95%) with a 4.342-second median; its only rejected answer joined
+two technical literals that no supplied passage supported together. Both models
+retained 90% expected-source coverage, rejected all three unrelated questions,
+and completed without errors. The experimental configuration now recommends the
+9B model on compatible devices while retaining 1.5B as the smaller option.
+
+The Node run caches query vectors across modes to compare identical inputs;
+use browser runs for timing and download measurements. Reports include errors
+in retrieval denominators and distinguish retrieved passages from passages
+that survive exact prompt fitting. Generated-answer acceptance measures the
+existing validator, not independently verified correctness. Review required
+facts and unsupported claims separately.
+
+Serve the generated files, then make this server reachable from the Mac:
+
+```sh
+python3 -m http.server 9000 --bind 0.0.0.0 --directory docs
+```
+
+`--cdp` is the Mac Chrome debugging endpoint as seen from the machine running
+the evaluator. `--url` is the assistant URL as seen from Chrome on the Mac.
+Use HTTPS or forward the site server to the Mac's localhost; a plain LAN HTTP
+address does not provide the secure context required by local search/WebGPU.
+Use a dedicated Chrome profile with remote debugging enabled. Set the URLs
+below to the actual network endpoints:
+
+```sh
+export SMGEN_CDP_URL=http://mac-host:9223
+export SMGEN_EVAL_URL=http://localhost:9000/__smgen-assistant/frame.html
+
+# Verify the connection, asset version, secure context, and device first.
+npm run eval -- --cdp "$SMGEN_CDP_URL" --url "$SMGEN_EVAL_URL" \
+  --probe-only true --output /tmp/smgen-mac-device.json
+
+# Compare browser retrieval without loading a chat model or requiring WebGPU.
+npm run eval -- --cdp "$SMGEN_CDP_URL" --url "$SMGEN_EVAL_URL" \
+  --retrieval-only true --retrieval-modes lexical,semantic,hybrid \
+  --questions eval/assistant-questions.yaml --variants all --sequences true \
+  --output /tmp/smgen-mac-retrieval.json
+node eval/summarize.mjs /tmp/smgen-mac-retrieval.json
+
+# Then compare complete answers with the same model in every retrieval mode.
+npm run eval -- --cdp "$SMGEN_CDP_URL" --url "$SMGEN_EVAL_URL" \
+  --models Qwen2.5-1.5B-Instruct-q4f32_1-MLC \
+  --retrieval-modes lexical,semantic,hybrid --keep-model-cache true \
+  --questions eval/assistant-questions.yaml --variants all --sequences true \
+  --output /tmp/smgen-mac-answers.json
+node eval/summarize.mjs /tmp/smgen-mac-answers.json
+```
+
+Each mode runs in a separate page/worker. Model artifacts remain cached between
+modes. `--keep-model-cache true` also retains them after the comparison, avoiding
+repeat downloads on the Mac. Retrieval-only runs never delete model caches.
+The first semantic request in each worker includes model initialization; later
+requests report warm search time. Browser HTTP/model caches can affect cold
+timings, so record the cache state alongside a run. Source and model loading
+remain lazy: lexical mode does not fetch the embedding model or semantic index.
+
+For manual comparison, open `frame.html?evaluation=1&retrieval=lexical`,
+`&retrieval=semantic`, or `&retrieval=hybrid`. These URL overrides only apply
+when `evaluation=1`; normal visitors use the site's configuration.
+
+## Original model evaluation
+
 [`questions.yaml`](questions.yaml) groups documentation questions by user role.
 Each scenario contains three independent phrasings, the source sections that
 should support the answer, and the facts that a useful answer should preserve.

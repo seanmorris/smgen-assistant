@@ -4,6 +4,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import process from "node:process";
 import { chromium } from "playwright-core";
 import { parse as parseYaml } from "yaml";
+import { questionUsesPreviousContext } from "../src/shared/prompt.mjs";
 
 /** Parse command-line flags with one value each. */
 function options() {
@@ -16,9 +17,12 @@ function options() {
   }
   const models = (values.get("--models") ?? "").split(",").map((value) => value.trim()).filter(Boolean);
   const probeOnly = values.get("--probe-only") === "true";
-  if (!models.length && !probeOnly) throw new Error("Pass one or more comma-separated model IDs with --models");
+  const retrievalOnly = values.get("--retrieval-only") === "true";
+  const retrievalModes = (values.get("--retrieval-modes") ?? "configured").split(",");
+  if (retrievalModes.some((mode) => !["configured", "lexical", "semantic", "hybrid"].includes(mode))) throw new Error("--retrieval-modes must contain lexical, semantic, hybrid, or configured");
+  if (!models.length && !probeOnly && !retrievalOnly) throw new Error("Pass --models or --retrieval-only true");
   return {
-    cdp: values.get("--cdp") ?? "http://172.19.0.1:9223",
+    cdp: values.get("--cdp") ?? process.env.SMGEN_CDP_URL ?? "http://172.19.0.1:9223",
     url: values.get("--url") ?? "http://localhost:9000/__smgen-assistant/frame.html?evaluation=1",
     output: values.get("--output") ?? `/tmp/smgen-assistant-eval-${Date.now()}.json`,
     questions: values.get("--questions") ?? new URL("questions.yaml", import.meta.url).pathname,
@@ -26,6 +30,9 @@ function options() {
     scenarios: new Set((values.get("--scenarios") ?? "").split(",").map((value) => value.trim()).filter(Boolean)),
     sequences: values.get("--sequences") === "true",
     clearHttpCache: values.get("--clear-http-cache") === "true",
+    keepModelCache: values.get("--keep-model-cache") === "true",
+    retrievalOnly,
+    retrievalModes,
     probeOnly,
     models
   };
@@ -111,6 +118,40 @@ async function openEvaluationPage(context, url, requireModel = true) {
   }
 }
 
+/** Set the evaluation-only mode override without changing the generated configuration. */
+function evaluationUrl(url, mode) {
+  const result = new URL(url);
+  result.searchParams.set("evaluation", "1");
+  if (mode === "configured") result.searchParams.delete("retrieval");
+  else result.searchParams.set("retrieval", mode);
+  return result.href;
+}
+
+/** Exercise the browser search worker without loading a WebLLM model. */
+async function evaluateRetrieval(page, mode, cases, result, output) {
+  const effectiveMode = mode === "configured"
+    ? await page.evaluate(() => window.__smgenEvaluationDevice.retrievalMode)
+    : mode;
+  for (const testCase of cases) {
+    let previous = "";
+    for (const [turn, expected] of testCase.questions.entries()) {
+      const record = { modelId: null, retrievalMode: effectiveMode, caseId: testCase.id, role: testCase.role, scenario: testCase.scenario, turn: turn + 1, ...expected };
+      process.stdout.write(`${effectiveMode} retrieval ${testCase.id} turn ${turn + 1}\n`);
+      try {
+        record.telemetry = await page.evaluate(async (request) => {
+          if (!window.__smgenEvaluationRetrieve) throw new Error("Rebuild the assistant to enable retrieval evaluation.");
+          return window.__smgenEvaluationRetrieve(request);
+        }, { question: expected.question, mode: effectiveMode, previousQuery: questionUsesPreviousContext(expected.question) ? previous : "" });
+      } catch (error) {
+        record.error = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+      }
+      previous = expected.question;
+      result.records.push(record);
+      await save(output, result);
+    }
+  }
+}
+
 /**
  * Remove one completed model from browser storage and verify no records remain.
  *
@@ -159,11 +200,15 @@ async function clearBrowserHttpCache(context) {
  * @param {{records: Array<Record<string, unknown>>}} result
  * @param {string} output
  */
-async function evaluateModel(page, modelId, cases, result, output) {
-  const available = await page.locator("#model-select option").evaluateAll((items) => items.map((item) => item.value));
+async function evaluateModel(page, modelId, cases, result, output, mode) {
+  const modelSelect = page.locator("#model-select");
+  const available = await modelSelect.locator("option").evaluateAll((items) => items.map((item) => item.value));
   if (!available.includes(modelId)) throw new Error(`${modelId} is absent from the generated evaluation config`);
-  await page.locator("#model-select").selectOption(modelId);
-  await page.locator("#model-select:not([disabled])").waitFor();
+  if (await modelSelect.inputValue() !== modelId) await modelSelect.selectOption(modelId, { force: true });
+  await page.waitForFunction((expectedModelId) => {
+    const select = document.querySelector("#model-select");
+    return select instanceof HTMLSelectElement && !select.disabled && select.value === expectedModelId;
+  }, modelId);
   for (const testCase of cases) {
     await page.locator("#new-chat").click();
     await page.waitForTimeout(250);
@@ -171,12 +216,13 @@ async function evaluateModel(page, modelId, cases, result, output) {
       process.stdout.write(`${modelId} ${testCase.id} turn ${turn + 1}\n`);
       try {
         const telemetry = await ask(page, expected.question);
-        const record = { modelId, caseId: testCase.id, role: testCase.role, scenario: testCase.scenario, turn: turn + 1, ...expected, telemetry };
+        const record = { modelId, retrievalMode: telemetry.retrievalMode ?? mode, caseId: testCase.id, role: testCase.role, scenario: testCase.scenario, turn: turn + 1, ...expected, telemetry };
         if (telemetry.error) record.error = `${telemetry.error.name}: ${telemetry.error.message}`;
         result.records.push(record);
       } catch (error) {
         result.records.push({
           modelId,
+          retrievalMode: mode,
           caseId: testCase.id,
           role: testCase.role,
           scenario: testCase.scenario,
@@ -197,7 +243,7 @@ async function main() {
   const matrix = parseYaml(await readFile(settings.questions, "utf8"));
   const cases = evaluationCases(matrix, settings);
   const result = {
-    version: 1,
+    version: 2,
     startedAt: new Date().toISOString(),
     settings: { ...settings, scenarios: [...settings.scenarios] },
     cases: cases.length,
@@ -209,7 +255,7 @@ async function main() {
   const context = browser.contexts()[0];
   if (!context) throw new Error("The CDP browser has no context");
   try {
-    const probePage = await openEvaluationPage(context, settings.url, false);
+    const probePage = await openEvaluationPage(context, evaluationUrl(settings.url, "configured"), false);
     try {
       result.device = await probePage.evaluate(() => window.__smgenEvaluationDevice);
     } finally {
@@ -217,22 +263,36 @@ async function main() {
     }
     await save(settings.output, result);
     process.stdout.write(`${JSON.stringify(result.device, null, 2)}\n`);
-    if (!settings.probeOnly) {
-      for (const modelId of settings.models) {
-        const page = await openEvaluationPage(context, settings.url);
+    if (!settings.probeOnly && settings.retrievalOnly) {
+      for (const mode of settings.retrievalModes) {
+        const page = await openEvaluationPage(context, evaluationUrl(settings.url, mode), false);
         try {
-          await evaluateModel(page, modelId, cases, result, settings.output);
+          await evaluateRetrieval(page, mode, cases, result, settings.output);
+        } finally {
+          await page.close();
+        }
+      }
+    } else if (!settings.probeOnly) {
+      for (const modelId of settings.models) {
+        try {
+          for (const mode of settings.retrievalModes) {
+            const page = await openEvaluationPage(context, evaluationUrl(settings.url, mode));
+            try {
+              await evaluateModel(page, modelId, cases, result, settings.output, mode);
+            } finally {
+              await page.close();
+            }
+          }
         } finally {
           process.stdout.write(`${modelId} releasing model and worker\n`);
-          await page.close();
-          await new Promise((resolve) => setTimeout(resolve, 1_000));
-          process.stdout.write(`${modelId} deleting cached files\n`);
-          const cleanup = await deleteModelFromDisk(context, settings.url, modelId);
-          if (settings.clearHttpCache) await clearBrowserHttpCache(context);
-          result.cleanups.push({ modelId, ...cleanup, httpCacheCleared: settings.clearHttpCache, finishedAt: new Date().toISOString() });
-          await save(settings.output, result);
-          const cacheDetail = settings.clearHttpCache ? " and HTTP cache cleared" : "";
-          process.stdout.write(`${modelId} deleted from disk (${cleanup.deletedRecords} residual records removed${cacheDetail})\n`);
+          if (!settings.keepModelCache) {
+            await new Promise((resolve) => setTimeout(resolve, 1_000));
+            const cleanup = await deleteModelFromDisk(context, evaluationUrl(settings.url, "configured"), modelId);
+            if (settings.clearHttpCache) await clearBrowserHttpCache(context);
+            result.cleanups.push({ modelId, ...cleanup, httpCacheCleared: settings.clearHttpCache, finishedAt: new Date().toISOString() });
+            await save(settings.output, result);
+            process.stdout.write(`${modelId} deleted from disk (${cleanup.deletedRecords} residual records removed)\n`);
+          }
         }
       }
     }
@@ -242,6 +302,7 @@ async function main() {
     await browser.close();
   }
   process.stdout.write(`${settings.output}\n`);
+  if (result.records.some((record) => record.error)) process.exitCode = 1;
 }
 
 await main();

@@ -125,6 +125,30 @@ test("question coverage lets concise procedures rely on the question's setting",
   assert.equal(formatGeneratedAnswer(pgliteAnswer, [pglite], "stop", "What do I install and pass to PhpWeb so browser PHP can open a PostgreSQL-style PDO database with PGlite?").ok, true);
 });
 
+test("question coverage recognizes reader terms for documented concepts", () => {
+  const baseSource = sources[0];
+  assert.ok(baseSource);
+  const privacy = { ...baseSource, content: "Questions stay in the browser. They are not sent to an author-operated API." };
+  assert.equal(formatGeneratedAnswer("- Questions stay in the browser and are not sent to an author-operated API.", [privacy], "stop", "Are my questions sent to a server?").ok, true);
+
+  const launcher = { ...baseSource, content: "Check `loader.js` and inspect `navigator.gpu`. A missing launcher is expected when WebGPU is unavailable." };
+  assert.equal(formatGeneratedAnswer("- Check `loader.js` and inspect `navigator.gpu`.", [launcher], "stop", "I cannot see the chat button. What should I check?").ok, true);
+
+  const corpus = { ...baseSource, content: "Set `assistant: false` in page frontmatter to exclude one page from the corpus." };
+  assert.equal(formatGeneratedAnswer("- Set `assistant: false` to exclude the page from the corpus.", [corpus], "stop", "Can I prevent the bot from reading certain articles?").ok, true);
+
+  const validation = { ...baseSource, content: "An invented command is a grounding failure." };
+  assert.equal(formatGeneratedAnswer("- An invented command is a grounding failure.", [validation], "stop", "What happens if an answer invents a command?").ok, true);
+});
+
+test("generated prose can apply a documented configuration key", () => {
+  const baseSource = sources[0];
+  assert.ok(baseSource);
+  const configuration = { ...baseSource, title: "Configuration", heading: "Interface Text", content: "`greeting`: first assistant message." };
+  assert.equal(formatGeneratedAnswer("- Set `greeting` to change the first assistant message.", [configuration], "stop", "How do I change the greeting?").ok, true);
+  assert.equal(formatGeneratedAnswer("- Edit the `greeting` setting in the configuration.", [configuration], "stop", "How do I change the greeting?").ok, true);
+});
+
 test("generated prose rejects an instruction that reverses a documented warning", () => {
   const baseSource = sources[0];
   assert.ok(baseSource);

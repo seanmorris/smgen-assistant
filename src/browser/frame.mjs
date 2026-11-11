@@ -1,6 +1,7 @@
 // @ts-check
 
-import { retrieveChunks } from "../shared/retrieval.mjs";
+import { retrievalMode } from "../shared/hybrid-retrieval.mjs";
+import { RetrievalClient } from "./retrieval-client.mjs";
 import { formatExtractiveAnswerSet, formatGeneratedAnswer } from "../shared/grounding.mjs";
 import { fitPrompt, MAX_QUESTION_CHARACTERS, questionUsesPreviousContext } from "../shared/prompt.mjs";
 import { adapterCompatibilityIssue, buildDeviceReport, recommendModel } from "./model-selection.mjs";
@@ -11,7 +12,7 @@ import { renderMarkdown } from "./render.mjs";
 /** @typedef {import('../shared/types.mjs').AssistantModel} AssistantModel */
 /** @typedef {import('../shared/types.mjs').PublicAssistantConfig} PublicAssistantConfig */
 /** @typedef {import('@mlc-ai/web-llm').MLCEngineInterface} MLCEngineInterface */
-/** @typedef {Window & {__smgenEvaluationDeleteModel?: (modelId: string) => Promise<{deletedRecords: number, remainingRecords: number}>, __smgenEvaluationDevice?: Record<string, unknown>}} EvaluationWindow */
+/** @typedef {Window & {__smgenEvaluationDeleteModel?: (modelId: string) => Promise<{deletedRecords: number, remainingRecords: number}>, __smgenEvaluationDevice?: Record<string, unknown>, __smgenEvaluationRetrieve?: typeof evaluateRetrieval}} EvaluationWindow */
 
 /**
  * @typedef {object} SourceLink
@@ -30,6 +31,9 @@ import { renderMarkdown } from "./render.mjs";
 
 const assetBase = new URL("./", import.meta.url);
 const evaluationMode = new URL(location.href).searchParams.get("evaluation") === "1";
+const retrievalClient = new RetrievalClient(assetBase);
+/** @type {import('../shared/hybrid-retrieval.mjs').RetrievalMode} */
+let activeRetrievalMode = "lexical";
 const deviceMemoryGB = /** @type {Navigator & {deviceMemory?: number}} */ (navigator).deviceMemory ?? null;
 let transcriptKey = `smgen-assistant:transcript:v3:${assetBase.pathname}`;
 let modelKey = `smgen-assistant:model:${assetBase.pathname}`;
@@ -74,6 +78,22 @@ let hostChannelId = "";
 
 if (evaluationMode) {
   /** @type {EvaluationWindow} */ (window).__smgenEvaluationDeleteModel = deleteEvaluationModel;
+  /** @type {EvaluationWindow} */ (window).__smgenEvaluationRetrieve = evaluateRetrieval;
+}
+
+/**
+ * Evaluate search independently of WebGPU and generation, using the actual browser worker.
+ * @param {{question: string, mode: import('../shared/hybrid-retrieval.mjs').RetrievalMode, previousQuery?: string}} request
+ */
+async function evaluateRetrieval(request) {
+  if (!evaluationMode || !config || !corpus) throw new Error("Retrieval evaluation is not ready.");
+  if (generation) throw new Error("Wait for the active question before evaluating retrieval.");
+  if (!request.question.trim() || request.question.length > MAX_QUESTION_CHARACTERS) throw new Error("Invalid evaluation question.");
+  const mode = retrievalMode(request.mode, new URLSearchParams());
+  const result = await retrievalClient.retrieve(corpus.chunks, request.question, {
+    ...config.retrieval, previousQuery: request.previousQuery ?? "", currentUrl: ""
+  }, mode, new AbortController().signal);
+  return { kind: "retrieval", question: request.question, retrieval: result.telemetry, retrievedSources: sourceLinks(result.chunks) };
 }
 
 /**
@@ -92,7 +112,7 @@ function postToHost(message) {
  */
 function reportEvaluation(result) {
   if (!evaluationMode) return;
-  postToHost({ type: "smgen-assistant:evaluation-result", version: 1, ...result });
+  postToHost({ type: "smgen-assistant:evaluation-result", version: 1, retrievalMode: activeRetrievalMode, ...result });
 }
 
 /**
@@ -312,9 +332,10 @@ function modelNote(model, ready = false) {
   const estimates = [];
   if (model.downloadMB) estimates.push(`${model.downloadMB.toLocaleString()} MB download`);
   if (model.memoryMB) estimates.push(`${model.memoryMB.toLocaleString()} MB GPU memory`);
-  const detail = estimates.length
+  let detail = estimates.length
     ? `${model.label}, about ${estimates.join(" and ")}.`
     : `${model.label} downloads on first use.`;
+  if (activeRetrievalMode !== "lexical") detail += " Local search also downloads a smaller model on first use.";
   return model.id === recommendedModel?.id ? `Recommended for this device. ${detail}` : detail;
 }
 
@@ -465,14 +486,16 @@ function sourceLinks(chunks) {
  * @param {CorpusChunk[]} retrieved
  * @param {CorpusChunk[]} fitted
  * @param {unknown} error
+ * @param {Record<string, unknown>} [retrieval]
  */
-function reportEvaluationFailure(question, startedAt, retrieved, fitted, error) {
+function reportEvaluationFailure(question, startedAt, retrieved, fitted, error, retrieval) {
   const failure = error instanceof Error
     ? { name: error.name, message: error.message }
     : { name: "Error", message: String(error) };
   reportEvaluation({
     modelId: selectedModel?.id ?? "",
     question,
+    retrieval,
     retrievedSources: sourceLinks(retrieved),
     fittedSources: sourceLinks(fitted),
     promptTokens: null,
@@ -523,29 +546,38 @@ async function askQuestion(suppliedQuestion) {
   }
 
   const previousQuestion = previousUserQuestion(question);
-  const retrieved = retrieveChunks(corpus.chunks, question, {
-    ...config.retrieval,
-    currentUrl: pageContext.url,
-    previousQuery: previousQuestion
-  });
-  if (!retrieved.length) {
-    const answer = /** @type {TranscriptMessage} */ ({
-      role: "assistant",
-      content: "I could not find that in this site's documentation. Try a more specific term or identifier."
-    });
-    appendMessage(answer);
-    transcript.push({ role: "user", content: question }, answer);
-    transcript = transcript.slice(-20);
-    storeTranscript();
-    return;
-  }
-
-  const activity = activityMessage(engine ? "Preparing sources…" : "Starting the assistant…");
+  /** @type {CorpusChunk[]} */
+  let retrieved = [];
+  /** @type {Record<string, unknown>} */
+  let retrievalTelemetry = { mode: activeRetrievalMode };
+  let retrievalComplete = false;
+  const activity = activityMessage("Searching documentation…");
   const reusedEngine = Boolean(engine);
   generation = new AbortController();
   setWorking(true);
   reportActivity(true);
   try {
+    const retrieval = await retrievalClient.retrieve(corpus.chunks, question, {
+      ...config.retrieval, currentUrl: pageContext.url, previousQuery: previousQuestion
+    }, activeRetrievalMode, generation.signal, (message) => { activity.label.textContent = message; });
+    retrieved = retrieval.chunks;
+    retrievalTelemetry = retrieval.telemetry;
+    retrievalComplete = true;
+    if (!retrieved.length) {
+      const answer = /** @type {TranscriptMessage} */ ({
+        role: "assistant", content: "I could not find that in this site's documentation. Try a more specific term or identifier."
+      });
+      activity.article.className = "message assistant";
+      renderAssistantMessage(activity.article, answer);
+      transcript.push({ role: "user", content: question }, answer);
+      transcript = transcript.slice(-20);
+      storeTranscript();
+      reportEvaluation({ modelId: selectedModel?.id ?? "", question, retrieval: retrievalTelemetry,
+        retrievedSources: [], fittedSources: [], displayedSources: [], displayedAnswer: answer.content,
+        rawAnswer: "", outcome: "no-sources", fallback: false, validation: { ok: true, abstained: true },
+        timing: { engineMs: 0, generationMs: 0, totalMs: Math.round(performance.now() - startedAt), reusedEngine } });
+      return;
+    }
     const engineStartedAt = performance.now();
     const activeEngine = await ensureEngine(activity);
     const engineReadyAt = performance.now();
@@ -563,13 +595,13 @@ async function askQuestion(suppliedQuestion) {
     if (!fitted) {
       activity.article.className = "message assistant error";
       activity.article.textContent = "That question is too long for this model. Shorten it and try again.";
-      reportEvaluationFailure(question, startedAt, retrieved, [], new Error("The prompt did not fit the model context."));
+      reportEvaluationFailure(question, startedAt, retrieved, [], new Error("The prompt did not fit the model context."), retrievalTelemetry);
       return;
     }
     if (!fitted.sources.length) {
       activity.article.className = "message assistant";
       activity.article.textContent = "The question fits, but there is not enough room for a documentation passage. Shorten the question and try again.";
-      reportEvaluationFailure(question, startedAt, retrieved, [], new Error("No documentation passage fit the model context."));
+      reportEvaluationFailure(question, startedAt, retrieved, [], new Error("No documentation passage fit the model context."), retrievalTelemetry);
       return;
     }
 
@@ -614,6 +646,7 @@ async function askQuestion(suppliedQuestion) {
     reportEvaluation({
       modelId: selectedModel?.id ?? "",
       question,
+      retrieval: retrievalTelemetry,
       retrievedSources: sourceLinks(retrieved),
       fittedSources: sourceLinks(fitted.sources),
       promptTokens: fitted.promptTokens,
@@ -632,10 +665,12 @@ async function askQuestion(suppliedQuestion) {
       }
     });
   } catch (error) {
-    reportEvaluationFailure(question, startedAt, retrieved, [], error);
+    reportEvaluationFailure(question, startedAt, retrieved, [], error, retrievalTelemetry);
     if (error instanceof DOMException && error.name === "AbortError") {
       activity.article.className = "message assistant";
       activity.article.textContent = "Answer stopped.";
+    } else if (!retrievalComplete) {
+      showRetry(activity.article, question, "Local search could not finish. Check the connection and try again.");
     } else {
       console.error("smgen-assistant: question failed", error);
       const module = await import("./engine-client.mjs");
@@ -723,6 +758,7 @@ async function start() {
       requestGpuAdapter()
     ]);
     config = loadedConfig;
+    activeRetrievalMode = retrievalMode(config?.retrieval.mode, new URL(location.href).searchParams);
     corpus = loadedCorpus;
     gpuAdapter = detectedAdapter;
     configureStorageKeys(loadedConfig);
@@ -730,6 +766,9 @@ async function start() {
     configureModelPicker(gpuAdapter);
     if (evaluationMode) {
       /** @type {EvaluationWindow} */ (window).__smgenEvaluationDevice = {
+        assetVersion: config?.assetVersion,
+        retrievalMode: activeRetrievalMode,
+        secureContext: window.isSecureContext,
         userAgent: navigator.userAgent,
         platform: navigator.platform,
         deviceMemoryGB,

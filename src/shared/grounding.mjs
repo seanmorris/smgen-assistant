@@ -9,20 +9,22 @@ const LOW_VALUE_WORDS = new Set([
 ]);
 const QUERY_LOW_VALUE_WORDS = new Set([
   ...LOW_VALUE_WORDS,
-  "a", "an", "do", "does", "how", "i", "in", "is", "it", "me", "my", "of", "on", "one", "or", "please", "rss", "should", "site", "smgen", "tell", "to", "use", "what", "when", "where", "which", "who", "will", "would", "you"
+  "a", "an", "answer", "answers", "do", "does", "how", "i", "in", "is", "it", "me", "my", "of", "on", "one", "or", "please", "rss", "should", "site", "smgen", "tell", "to", "use", "what", "when", "where", "which", "who", "will", "would", "you"
 ]);
 const LEADING_ACTION_WORDS = new Set([
   "add", "build", "change", "configure", "copy", "create", "define", "edit", "enable", "generate", "initialize", "install", "link", "open", "place", "publish", "remove", "replace", "run", "select", "serve", "set", "upload", "write"
 ]);
 const QUESTION_ACTION_WORDS = new Set([
   ...LEADING_ACTION_WORDS,
-  "capture", "deploy", "display", "load", "migrate", "pass"
+  "capture", "check", "deploy", "display", "keep", "load", "migrate", "pass", "prevent"
 ]);
 const GROUNDED_EQUIVALENTS = new Map([
   ["add", ["include", "listen", "load", "put", "register"]],
   ["additional", ["custom"]],
   ["assets", ["css", "javascript", "script", "stylesheet"]],
   ["browser", ["css", "javascript", "script", "stylesheet"]],
+  ["button", ["launcher"]],
+  ["check", ["confirm", "ensure", "inspect", "verify"]],
   ["create", ["initialize"]],
   ["creating", ["initialize"]],
   ["define", ["register"]],
@@ -33,11 +35,15 @@ const GROUNDED_EQUIVALENTS = new Map([
   ["get", ["capture", "receive", "return", "store"]],
   ["generate", ["generated", "build"]],
   ["initialize", ["init"]],
+  ["keep", ["remain"]],
+  ["messages", ["questions"]],
   ["navigate", ["cd"]],
   ["new", ["empty", "first"]],
   ["opt", ["join", "membership"]],
   ["publish", ["build", "copy", "output", "rebuild"]],
+  ["prevent", ["exclude"]],
   ["running", ["run"]],
+  ["server", ["api"]],
   ["setting", ["set"]],
   ["view", ["open", "serve"]],
   ["without", ["absent", "missing"]],
@@ -314,7 +320,12 @@ function groundedVariants(word) {
   const variants = new Set([word, ...(GROUNDED_EQUIVALENTS.get(word) ?? [])]);
   if (word.length > 4 && word.endsWith("ing")) variants.add(word.slice(0, -3).replace(/(.)\1$/u, "$1"));
   if (word.length > 4 && word.endsWith("ed")) variants.add(word.slice(0, -2).replace(/(.)\1$/u, "$1"));
-  if (word.length > 4 && word.endsWith("s")) variants.add(word.slice(0, -1));
+  if (word.length > 4 && word.endsWith("s")) {
+    const root = word.slice(0, -1);
+    variants.add(root);
+    variants.add(`${root}ed`);
+    variants.add(`${root}ing`);
+  }
   if (word.length > 3 && !word.endsWith("s")) variants.add(`${word}s`);
   return [...variants];
 }
@@ -327,8 +338,10 @@ function groundedVariants(word) {
 function topicTerms(text) {
   const terms = new Set();
   for (const match of text.normalize("NFKC").toLocaleLowerCase("en-US").match(/[\p{L}\p{N}_./:+#-]+/gu) ?? []) {
-    terms.add(match);
-    for (const part of match.split(/[_./:+#-]+/gu)) if (part) terms.add(part);
+    const term = match.replace(/^[-./:+#]+|[-./:+#]+$/gu, "");
+    if (!term) continue;
+    terms.add(term);
+    for (const part of term.split(/[_./:+#-]+/gu)) if (part) terms.add(part);
   }
   return terms;
 }
@@ -374,7 +387,7 @@ function validateQuestionCoverage(answer, sources, question) {
     && groundedVariants(term).some((variant) => sourceTerms.has(variant)));
   const unique = [...new Set(relevant)];
   if (!unique.length) return { ok: true };
-  const requestedActions = questionIntents(question).includes("how")
+  const requestedActions = (questionIntents(question).includes("how") || /\b(?:can|should|what\s+should)\s+(?:i|we|you)\b/iu.test(question))
     ? unique.filter((term) => QUESTION_ACTION_WORDS.has(term))
     : [];
   const requiredTerms = requestedActions.length ? requestedActions : unique;
@@ -419,17 +432,25 @@ function generatedSourceScore(text, source) {
   const words = [...new Set((text.toLocaleLowerCase("en-US").match(/[\p{L}\p{N}]+/gu) ?? [])
     .filter((word) => word.length > 2 && !LOW_VALUE_WORDS.has(word)))];
   const literals = technicalLiterals(text);
-  const documentation = comparable(source.content);
+  const firstWord = text.toLocaleLowerCase("en-US").match(/[\p{L}\p{N}]+/u)?.[0] ?? "";
+  const configuresDocumentedLiteral = ["change", "configure", "edit", "set"].includes(firstWord)
+    && literals.length > 0
+    && /\b(?:configuration|settings?)\b/iu.test(`${source.title} ${source.heading}`);
+  const bodyDocumentation = comparable(source.content);
+  const documentation = configuresDocumentedLiteral
+    ? comparable(`${source.title}\n${source.heading}\n${source.content}`)
+    : bodyDocumentation;
   if (literals.some((literal) => !literalHasSourceSupport(literal, documentation))) return -1;
   const sourceWords = new Set(documentation.toLocaleLowerCase("en-US").match(/[\p{L}\p{N}]+/gu) ?? []);
   const supported = words.filter((word) => groundedVariants(word).some((variant) => sourceWords.has(variant))).length;
   const ratio = words.length ? supported / words.length : 1;
-  const firstWord = text.toLocaleLowerCase("en-US").match(/[\p{L}\p{N}]+/u)?.[0] ?? "";
   const unsupportedAction = LEADING_ACTION_WORDS.has(firstWord)
+    && !configuresDocumentedLiteral
     && !groundedVariants(firstWord).some((variant) => sourceWords.has(variant));
   const reversesWarning = (firstWord === "use" || LEADING_ACTION_WORDS.has(firstWord))
-    && literals.some((literal) => literalHasOnlyNegativeSupport(literal, documentation));
-  if (unsupportedAction || reversesWarning || supported < Math.min(2, words.length) || ratio < 0.5) return -1;
+    && literals.some((literal) => literalHasOnlyNegativeSupport(literal, bodyDocumentation));
+  const minimumRatio = configuresDocumentedLiteral ? 0.4 : 0.5;
+  if (unsupportedAction || reversesWarning || supported < Math.min(2, words.length) || ratio < minimumRatio) return -1;
   return supported * 10 + ratio;
 }
 

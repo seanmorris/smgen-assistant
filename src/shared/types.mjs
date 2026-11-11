@@ -47,7 +47,7 @@
  * @property {string} greeting
  * @property {AssistantModel} model
  * @property {AssistantModel[]} models
- * @property {{maxChunks: number, maxCharacters: number}} retrieval
+ * @property {{maxChunks: number, maxCharacters: number, mode?: 'lexical' | 'semantic' | 'hybrid'}} retrieval
  */
 
 export {};
