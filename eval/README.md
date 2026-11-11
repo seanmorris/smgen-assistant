@@ -28,6 +28,24 @@ between native CPU and browser WASM inference can change secondary candidates
 near the similarity threshold. These results do not measure generated answer
 quality or performance on the Mac.
 
+The Mac run on 2026-11-11 used Chrome 150, a 32 GB `MacIntel` device, and an
+Apple Metal 3 WebGPU adapter. Its 69-case retrieval-only run matched the Linux
+coverage exactly: lexical retrieved every expected section for 8/20 answerable
+cases, semantic for 15/20, and hybrid for 14/20; all three rejected the three
+unrelated questions. Median warm search took 1 ms, 9 ms, and 10 ms respectively.
+The first semantic query took 1.608 seconds; hybrid initialization took 446 ms
+after the embedding assets entered Chrome's HTTP cache.
+
+The complete Mac run used `Qwen2.5-1.5B-Instruct-q4f32_1-MLC` for all three
+modes and completed 69 cases without errors. Six generated answers per mode
+passed grounding unchanged. The other generated answers used the extractive
+fallback when validation rejected unsupported or incomplete content. Median
+warm generation took 1.724 seconds with lexical retrieval, 1.433 seconds with
+semantic retrieval, and 1.244 seconds with hybrid retrieval. On this matrix,
+semantic retrieval improved source coverage substantially, hybrid fusion did
+not improve on semantic retrieval, and the small chat model remained the main
+limit on generated-answer acceptance.
+
 The Node run caches query vectors across modes to compare identical inputs;
 use browser runs for timing and download measurements. Reports include errors
 in retrieval denominators and distinguish retrieved passages from passages

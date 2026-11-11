@@ -201,10 +201,14 @@ async function clearBrowserHttpCache(context) {
  * @param {string} output
  */
 async function evaluateModel(page, modelId, cases, result, output, mode) {
-  const available = await page.locator("#model-select option").evaluateAll((items) => items.map((item) => item.value));
+  const modelSelect = page.locator("#model-select");
+  const available = await modelSelect.locator("option").evaluateAll((items) => items.map((item) => item.value));
   if (!available.includes(modelId)) throw new Error(`${modelId} is absent from the generated evaluation config`);
-  await page.locator("#model-select").selectOption(modelId);
-  await page.locator("#model-select:not([disabled])").waitFor();
+  if (await modelSelect.inputValue() !== modelId) await modelSelect.selectOption(modelId, { force: true });
+  await page.waitForFunction((expectedModelId) => {
+    const select = document.querySelector("#model-select");
+    return select instanceof HTMLSelectElement && !select.disabled && select.value === expectedModelId;
+  }, modelId);
   for (const testCase of cases) {
     await page.locator("#new-chat").click();
     await page.waitForTimeout(250);
