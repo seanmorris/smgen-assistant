@@ -7,4 +7,15 @@ retrieval:
   mode: hybrid
   maxChunks: 4
   maxCharacters: 3000
-# Uses the ordinary default chat model. CDP retrieval-only runs do not load it.
+models:
+  - id: Qwen3.5-9B-q4f16_1-MLC
+    label: "Qwen3.5 9B: Strongest answers"
+    downloadMB: 4823
+    memoryMB: 6434
+    minDeviceMemoryGB: 16
+    quality: 50
+  - id: Qwen2.5-1.5B-Instruct-q4f32_1-MLC
+    label: "Qwen2.5 1.5B: Smallest"
+    downloadMB: 880
+    memoryMB: 1889
+    quality: 10

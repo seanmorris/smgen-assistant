@@ -17,12 +17,13 @@ Cover every part of the question before adding supporting detail. Ignore a suppl
 Select only the most useful facts. Do not enumerate settings or examples unless the question asks for them. Do not write a complete guide or exhaust the sources.`;
 
 const OUTPUT_INSTRUCTIONS = `Answer directly in one to four short Markdown bullets, at most 90 words.
-Paraphrase naturally. Preserve warnings and conditions. Do not infer a step, prerequisite, or purpose.
-Use one bullet per requested action or decision before adding detail.
-Start each bullet with a hyphen and a complete sentence. Keep each bullet within one source.
-Use inline backticks for commands, filenames, configuration keys, and literal values. Never use code fences or HTML.
-Do not write citations or source labels; the interface adds them.
-Do not use answer-form labels, nested bullets, bold labels, headings, prefaces, closing notes, or facts absent from the sources.`;
+Stay close to the source wording. Lead with the documented setting, action, value, or condition that answers the question.
+Preserve warnings; do not infer or give generic advice.
+Use one bullet per requested action or decision; keep it a complete sentence from one source.
+Copy technical literals exactly in backticks. Never use code fences or HTML.
+Do not answer with a page title, heading, URL, or section label.
+Do not write citations; the interface adds them.
+No answer-form labels, nested bullets, bold labels, prefaces, closing notes, or unsupported facts.`;
 
 /**
  * Report whether a question needs the previous user turn to resolve a reference.

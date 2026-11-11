@@ -57,6 +57,16 @@ recover another expected source. These values are promising defaults for this
 corpus, not a general calibration; validate them on additional sites and unseen
 questions before exposing them as stable configuration.
 
+The next Mac run tightened the answer prompt around source wording and taught
+coverage validation to recognize common reader/documentation terms without
+accepting unsupported technical literals. Qwen2.5 1.5B accepted 11/20 generated
+answers (55%) with a 2.020-second median warm generation time. Qwen3.5 9B
+accepted 19/20 (95%) with a 4.342-second median; its only rejected answer joined
+two technical literals that no supplied passage supported together. Both models
+retained 90% expected-source coverage, rejected all three unrelated questions,
+and completed without errors. The experimental configuration now recommends the
+9B model on compatible devices while retaining 1.5B as the smaller option.
+
 The Node run caches query vectors across modes to compare identical inputs;
 use browser runs for timing and download measurements. Reports include errors
 in retrieval denominators and distinguish retrieved passages from passages
