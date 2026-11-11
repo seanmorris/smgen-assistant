@@ -24,9 +24,9 @@ SMGEN_ENGINE: php
 PLUGINS:
   - use: ./smgen.plugin.yaml
     options:
-      config: .smgen-assistant.yaml
+      config: .smgen-assistant.experimental.yaml
     watch:
-      - .smgen-assistant.yaml
+      - .smgen-assistant.experimental.yaml
 
 LLMS:
   title: smgen-assistant
