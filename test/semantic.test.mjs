@@ -52,6 +52,12 @@ test("hybrid retrieval retains identifiers, rejects weak semantic hits, and fits
   assert.deepEqual(selectRetrievedChunks(chunks, "greeting", options, "lexical", hits), retrieveChunks(chunks, "greeting", options));
 });
 
+test("a confident semantic match can admit weaker secondary passages", () => {
+  const confident = [{ id: "greeting", score: 0.21 }, { id: "privacy", score: 0.19 }];
+  assert.deepEqual(selectRetrievedChunks(chunks, "paraphrase", options, "semantic", confident).map(({ id }) => id), ["greeting", "privacy"]);
+  assert.deepEqual(selectRetrievedChunks(chunks, "unrelated", options, "semantic", confident.slice(1)), []);
+});
+
 test("only evaluation frames accept URL retrieval overrides", () => {
   assert.equal(retrievalMode(undefined, new URLSearchParams("retrieval=semantic")), "lexical");
   assert.equal(retrievalMode("hybrid", new URLSearchParams("evaluation=1&retrieval=lexical")), "lexical");

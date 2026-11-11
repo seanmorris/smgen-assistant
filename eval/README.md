@@ -46,6 +46,17 @@ semantic retrieval improved source coverage substantially, hybrid fusion did
 not improve on semantic retrieval, and the small chat model remained the main
 limit on generated-answer acceptance.
 
+A follow-up tuning run kept the `0.20` query relevance gate, admitted secondary
+semantic candidates down to `0.18`, lowered the reciprocal-rank constant from
+`60` to `5`, and raised the experimental site's passage limit from two to four.
+Expected-source coverage rose from 70% to 90% for hybrid retrieval while all
+three unrelated questions still returned no sources. The complete 23-case run
+had no errors and kept generated-answer acceptance at 30%; median warm search
+was 21 ms and median warm generation was 1.822 seconds. Six passages did not
+recover another expected source. These values are promising defaults for this
+corpus, not a general calibration; validate them on additional sites and unseen
+questions before exposing them as stable configuration.
+
 The Node run caches query vectors across modes to compare identical inputs;
 use browser runs for timing and download measurements. Reports include errors
 in retrieval denominators and distinguish retrieved passages from passages

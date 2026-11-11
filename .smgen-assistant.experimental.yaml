@@ -5,6 +5,6 @@ output: ./docs
 chunkCharacters: 4000
 retrieval:
   mode: hybrid
-  maxChunks: 2
+  maxChunks: 4
   maxCharacters: 3000
 # Uses the ordinary default chat model. CDP retrieval-only runs do not load it.
